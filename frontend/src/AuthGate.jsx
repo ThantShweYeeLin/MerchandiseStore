@@ -16,17 +16,21 @@ import { ShieldCheck, Loader2, LogOut, GraduationCap, Briefcase } from "lucide-r
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Stands in for msalInstance.loginPopup(...) + the token AD hands back.
-async function signInWithUniversitySSO() {
-  await wait(1100);
-  // This is the shape of the decoded JWT claims AD would return.
+// In this mock version, the "AD claims" come from whatever the person
+// typed into the sign-in form instead of a hardcoded value.
+async function signInWithUniversitySSO(formInput) {
+  await wait(900);
   return {
-    displayName: "Aye Myat Myat Mon",
-    email: "6611944@au.edu",
-    department: "Computer Science",
-    role: "STUDENT", // or "STAFF" / "ADMIN", set by AD group membership
-    adObjectId: "a1b2c3d4-...",
+    displayName: formInput.displayName,
+    email: formInput.email,
+    department: formInput.department,
+    role: formInput.role,
+    adObjectId: `mock-${Math.random().toString(36).slice(2, 10)}`,
   };
 }
+
+const DEPARTMENTS = ["Computer Science", "Engineering", "Business Administration", "Nursing", "Architecture"];
+const ROLES = ["STUDENT", "STAFF", "ADMIN"];
 
 /* ------------------------------------------------------------------ */
 /* Design tokens — matches storefront / admin panel                    */
@@ -52,6 +56,16 @@ const styles = {
 /* ------------------------------------------------------------------ */
 
 function SignInScreen({ onSignIn, signingIn }) {
+  const [form, setForm] = useState({
+    displayName: "",
+    email: "",
+    department: DEPARTMENTS[0],
+    role: "STUDENT",
+  });
+
+  const update = (field) => (e) => setForm({ ...form, [field]: e.target.value });
+  const canSubmit = form.displayName.trim() && form.email.trim();
+
   return (
     <div
       style={{
@@ -69,41 +83,77 @@ function SignInScreen({ onSignIn, signingIn }) {
         style={{
           background: COLORS.white,
           borderRadius: 10,
-          width: 380,
+          width: 400,
           maxWidth: "100%",
-          padding: "40px 32px",
-          textAlign: "center",
+          padding: "36px 32px",
           boxShadow: "0 20px 50px rgba(0,0,0,0.25)",
         }}
       >
-        <div
-          style={{
-            width: 60,
-            height: 60,
-            borderRadius: "50%",
-            border: `2px solid ${COLORS.red}`,
-            margin: "0 auto 18px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            ...styles.display,
-            fontWeight: 700,
-            fontSize: 20,
-            color: COLORS.red,
-          }}
-        >
-          AU
+        <div style={{ textAlign: "center", marginBottom: 26 }}>
+          <div
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: "50%",
+              border: `2px solid ${COLORS.red}`,
+              margin: "0 auto 14px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              ...styles.display,
+              fontWeight: 700,
+              fontSize: 19,
+              color: COLORS.red,
+            }}
+          >
+            AU
+          </div>
+          <div style={{ ...styles.display, fontSize: 21, fontWeight: 700, marginBottom: 6 }}>
+            Merchandise Store
+          </div>
+          <div style={{ fontSize: 13, color: COLORS.muted }}>
+            Sign in or create a test account to continue.
+          </div>
         </div>
-        <div style={{ ...styles.display, fontSize: 22, fontWeight: 700, marginBottom: 6 }}>
-          Merchandise Store
-        </div>
-        <div style={{ fontSize: 13.5, color: COLORS.muted, marginBottom: 30, lineHeight: 1.5 }}>
-          Sign in with your university account to browse the catalog or manage listings.
+
+        <FormField label="Full name">
+          <input
+            value={form.displayName}
+            onChange={update("displayName")}
+            placeholder="e.g. Aye Myat Myat Mon"
+            style={inputStyle}
+          />
+        </FormField>
+
+        <FormField label="University email">
+          <input
+            value={form.email}
+            onChange={update("email")}
+            placeholder="e.g. 6611944@au.edu"
+            style={inputStyle}
+          />
+        </FormField>
+
+        <div style={{ display: "flex", gap: 10 }}>
+          <FormField label="Department" grow>
+            <select value={form.department} onChange={update("department")} style={inputStyle}>
+              {DEPARTMENTS.map((d) => (
+                <option key={d} value={d}>{d}</option>
+              ))}
+            </select>
+          </FormField>
+          <FormField label="Role" grow>
+            <select value={form.role} onChange={update("role")} style={inputStyle}>
+              {ROLES.map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+          </FormField>
         </div>
 
         <button
-          onClick={onSignIn}
-          disabled={signingIn}
+          onClick={() => onSignIn(form)}
+          disabled={signingIn || !canSubmit}
           style={{
             width: "100%",
             background: COLORS.red,
@@ -113,7 +163,9 @@ function SignInScreen({ onSignIn, signingIn }) {
             borderRadius: 6,
             fontSize: 14.5,
             fontWeight: 700,
-            cursor: signingIn ? "default" : "pointer",
+            cursor: signingIn || !canSubmit ? "default" : "pointer",
+            opacity: !canSubmit ? 0.5 : 1,
+            marginTop: 6,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -123,25 +175,46 @@ function SignInScreen({ onSignIn, signingIn }) {
           {signingIn ? (
             <>
               <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
-              Redirecting to university sign-in…
+              Signing in…
             </>
           ) : (
             <>
               <ShieldCheck size={16} />
-              Sign in with University SSO
+              Sign in
             </>
           )}
         </button>
 
-        <div style={{ fontSize: 11.5, color: COLORS.muted, marginTop: 18, lineHeight: 1.5 }}>
-          You'll be redirected to your university's login page. This app never
-          sees your password.
+        <div style={{ fontSize: 11.5, color: COLORS.muted, marginTop: 14, textAlign: "center", lineHeight: 1.5 }}>
+          Role and department are chosen here for testing only — in production
+          these come from your real university AD account, not a form field.
         </div>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     </div>
   );
 }
+
+function FormField({ label, children, grow }) {
+  return (
+    <div style={{ marginBottom: 14, flex: grow ? 1 : undefined }}>
+      <label style={{ display: "block", fontSize: 12.5, color: COLORS.muted, fontWeight: 600, marginBottom: 6 }}>
+        {label}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+const inputStyle = {
+  width: "100%",
+  padding: "9px 10px",
+  borderRadius: 5,
+  border: `1px solid ${COLORS.line}`,
+  fontSize: 14,
+  boxSizing: "border-box",
+  color: COLORS.ink,
+};
 
 function SignedInScreen({ user, onSignOut, onEnterStorefront, onEnterAdmin }) {
   const canManage = user.role === "STAFF" || user.role === "ADMIN";
@@ -261,9 +334,9 @@ export default function AuthGate({ onEnterStorefront, onEnterAdmin }) {
   const [user, setUser] = useState(null);
   const [signingIn, setSigningIn] = useState(false);
 
-  const handleSignIn = async () => {
+  const handleSignIn = async (formInput) => {
     setSigningIn(true);
-    const claims = await signInWithUniversitySSO();
+    const claims = await signInWithUniversitySSO(formInput);
     setUser(claims);
     setSigningIn(false);
   };

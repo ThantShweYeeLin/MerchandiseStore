@@ -1,122 +1,100 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import React, { useState } from "react";
+import AuthGate from "./AuthGate";
+import StorefrontApp from "./StorefrontApp";
+import AdminCatalog from "./AdminCatalog";
+import { LogOut, ShoppingBag, Briefcase } from "lucide-react";
 
-function App() {
-  const [count, setCount] = useState(0)
+const COLORS = {
+  red: "#A61C2E",
+  redDeep: "#7A1220",
+  white: "#FFFFFF",
+  ink: "#20262F",
+  line: "#E3D9DA",
+};
+
+export default function App() {
+  const [page, setPage] = useState("login");
+  const [user, setUser] = useState(null);
+
+  const handleEnterStorefront = (signedInUser) => {
+    setUser(signedInUser);
+    setPage("storefront");
+  };
+
+  const handleEnterAdmin = (signedInUser) => {
+    setUser(signedInUser);
+    setPage("admin");
+  };
+
+  const handleSignOut = () => {
+    setUser(null);
+    setPage("login");
+  };
+
+  if (page === "login") {
+    return <AuthGate onEnterStorefront={handleEnterStorefront} onEnterAdmin={handleEnterAdmin} />;
+  }
+
+  const canManage = user?.role === "STAFF" || user?.role === "ADMIN";
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
+    <div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
+      <div
+        style={{
+          background: COLORS.ink,
+          color: COLORS.white,
+          padding: "8px 20px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          fontSize: 12.5,
+          fontFamily: "'IBM Plex Sans', -apple-system, sans-serif",
+        }}
+      >
+        <div style={{ display: "flex", gap: 6 }}>
+          <TabButton active={page === "storefront"} onClick={() => setPage("storefront")}>
+            <ShoppingBag size={13} /> Storefront
+          </TabButton>
+          {canManage && (
+            <TabButton active={page === "admin"} onClick={() => setPage("admin")}>
+              <Briefcase size={13} /> Admin
+            </TabButton>
+          )}
         </div>
         <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
+          onClick={handleSignOut}
+          style={{ background: "none", border: "none", color: "rgba(255,255,255,0.7)", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, fontSize: 12.5 }}
         >
-          Count is {count}
+          <LogOut size={12} /> Sign out
         </button>
-      </section>
+      </div>
 
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+      <div style={{ flexGrow: 1 }}>
+        {page === "storefront" && <StorefrontApp />}
+        {page === "admin" && <AdminCatalog />}
+      </div>
+    </div>
+  );
 }
 
-export default App
+function TabButton({ active, onClick, children }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        background: active ? COLORS.red : "transparent",
+        color: COLORS.white,
+        border: "none",
+        padding: "6px 12px",
+        borderRadius: 4,
+        fontSize: 12.5,
+        cursor: "pointer",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
