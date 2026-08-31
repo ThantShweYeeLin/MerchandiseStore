@@ -17,6 +17,9 @@ const REQUIRED_SECRETS = [
 ];
 
 let cachedSecrets = null;
+// Only set when a real Key Vault is in use — lets rotateSecret() persist a
+// new value there, instead of just updating the in-memory cache.
+let cachedClient = null;
 
 /**
  * Fetches all runtime secrets from Azure Key Vault once at boot and caches them
@@ -63,6 +66,7 @@ async function loadSecrets() {
   const vaultUrl = `https://${vaultName}.vault.azure.net`;
   const credential = new DefaultAzureCredential();
   const client = new SecretClient(vaultUrl, credential);
+  cachedClient = client;
 
   const entries = await Promise.all(
     REQUIRED_SECRETS.map(async (name) => {
@@ -82,4 +86,20 @@ function getSecret(name) {
   return cachedSecrets[name];
 }
 
-module.exports = { loadSecrets, getSecret };
+/**
+ * Rotates a secret (e.g. EDUCORE-INBOUND-KEY) to `newValue`. Persists to Key
+ * Vault when one is configured; in local/team dev (no vault) this only
+ * updates the in-memory cache, so a restart reverts to the .env value.
+ */
+async function rotateSecret(name, newValue) {
+  if (!cachedSecrets) {
+    throw new Error("Secrets have not been loaded yet. Call loadSecrets() at boot first.");
+  }
+  if (cachedClient) {
+    await cachedClient.setSecret(name, newValue);
+  }
+  cachedSecrets[name] = newValue;
+  return newValue;
+}
+
+module.exports = { loadSecrets, getSecret, rotateSecret };

@@ -115,4 +115,83 @@ router.put("/:id", requireAuth, requireRole("STAFF", "ADMIN"), async (req, res, 
   }
 });
 
+// STAFF/ADMIN only: delete
+router.delete("/:id", requireAuth, requireRole("STAFF", "ADMIN"), async (req, res, next) => {
+  try {
+    const existing = await prisma.product.findUnique({ where: { id: req.params.id } });
+    if (!existing) return res.status(404).json({ error: "Not found" });
+
+    await prisma.product.delete({ where: { id: req.params.id } });
+
+    await recordAudit({
+      userId: req.user.id,
+      action: "PRODUCT_DELETE",
+      entityType: "Product",
+      entityId: req.params.id,
+    });
+
+    res.status(204).end();
+  } catch (err) {
+    // Foreign key constraint: product is still referenced by existing order items.
+    if (err.code === "P2003") {
+      return res.status(409).json({ error: "Cannot delete a product that has existing orders" });
+    }
+    next(err);
+  }
+});
+
+// STAFF/ADMIN only: add a photo to a product
+router.post("/:productId/images", requireAuth, requireRole("STAFF", "ADMIN"), async (req, res, next) => {
+  try {
+    const product = await prisma.product.findUnique({ where: { id: req.params.productId } });
+    if (!product) return res.status(404).json({ error: "Product not found" });
+
+    const { url, sortOrder } = req.body;
+    if (!url) return res.status(400).json({ error: "url is required" });
+
+    const image = await prisma.productImage.create({
+      data: { productId: req.params.productId, url, sortOrder: sortOrder ?? 0 },
+    });
+
+    await recordAudit({
+      userId: req.user.id,
+      action: "PRODUCT_IMAGE_CREATE",
+      entityType: "ProductImage",
+      entityId: image.id,
+    });
+
+    res.status(201).json(image);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// STAFF/ADMIN only: remove a photo from a product
+router.delete(
+  "/:productId/images/:imageId",
+  requireAuth,
+  requireRole("STAFF", "ADMIN"),
+  async (req, res, next) => {
+    try {
+      const image = await prisma.productImage.findUnique({ where: { id: req.params.imageId } });
+      if (!image || image.productId !== req.params.productId) {
+        return res.status(404).json({ error: "Image not found" });
+      }
+
+      await prisma.productImage.delete({ where: { id: req.params.imageId } });
+
+      await recordAudit({
+        userId: req.user.id,
+        action: "PRODUCT_IMAGE_DELETE",
+        entityType: "ProductImage",
+        entityId: req.params.imageId,
+      });
+
+      res.status(204).end();
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 module.exports = router;

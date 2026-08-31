@@ -5,7 +5,11 @@ const mockPrismaClient = {
   category: {
     findMany: jest.fn(),
     create: jest.fn(),
+    findUnique: jest.fn(),
+    update: jest.fn(),
+    delete: jest.fn(),
   },
+  auditLog: { create: jest.fn() },
 };
 
 jest.mock("@prisma/client", () => ({
@@ -75,5 +79,49 @@ describe("POST /categories", () => {
 
     expect(res.status).toBe(403);
     expect(mockPrismaClient.category.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("PUT /categories/:id", () => {
+  it("allows ADMIN to rename a category", async () => {
+    mockPrismaClient.category.findUnique.mockResolvedValue({ id: "c1", name: "Old" });
+    mockPrismaClient.category.update.mockResolvedValue({ id: "c1", name: "New" });
+
+    const res = await request(buildApp())
+      .put("/categories/c1")
+      .set("x-test-role", "ADMIN")
+      .send({ name: "New" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.name).toBe("New");
+  });
+
+  it("rejects STAFF from editing a category", async () => {
+    const res = await request(buildApp())
+      .put("/categories/c1")
+      .set("x-test-role", "STAFF")
+      .send({ name: "New" });
+
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("DELETE /categories/:id", () => {
+  it("blocks deletion when products still reference the category", async () => {
+    mockPrismaClient.category.findUnique.mockResolvedValue({ id: "c1", name: "Engineering" });
+    mockPrismaClient.category.delete.mockRejectedValue({ code: "P2003" });
+
+    const res = await request(buildApp()).delete("/categories/c1").set("x-test-role", "ADMIN");
+
+    expect(res.status).toBe(409);
+  });
+
+  it("allows ADMIN to delete an unused category", async () => {
+    mockPrismaClient.category.findUnique.mockResolvedValue({ id: "c1", name: "Engineering" });
+    mockPrismaClient.category.delete.mockResolvedValue({});
+
+    const res = await request(buildApp()).delete("/categories/c1").set("x-test-role", "ADMIN");
+
+    expect(res.status).toBe(204);
   });
 });

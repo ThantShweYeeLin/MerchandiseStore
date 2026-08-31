@@ -7,6 +7,7 @@ const categoriesRouter = require("./routes/categories");
 const productsRouter = require("./routes/products");
 const ordersRouter = require("./routes/orders");
 const peerRouter = require("./routes/peer");
+const adminRouter = require("./routes/admin");
 
 function createApp() {
   const app = express();
@@ -23,6 +24,7 @@ function createApp() {
   app.use("/products", productsRouter);
   app.use("/orders", ordersRouter);
   app.use("/peer", peerRouter); // exposed for EduCore to consume
+  app.use("/admin", adminRouter);
 
   // Central error handler
   app.use((err, req, res, next) => {

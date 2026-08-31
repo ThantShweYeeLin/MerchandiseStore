@@ -7,8 +7,14 @@ const mockPrismaClient = {
     findUnique: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
+    delete: jest.fn(),
   },
   category: { findUnique: jest.fn() },
+  productImage: {
+    create: jest.fn(),
+    findUnique: jest.fn(),
+    delete: jest.fn(),
+  },
   auditLog: { create: jest.fn() },
 };
 
@@ -110,6 +116,81 @@ describe("GET /products/:id", () => {
     mockPrismaClient.product.findUnique.mockResolvedValue(null);
 
     const res = await request(buildApp()).get("/products/does-not-exist");
+
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("DELETE /products/:id", () => {
+  it("blocks deletion when the product still has orders", async () => {
+    mockPrismaClient.product.findUnique.mockResolvedValue({ id: "p1" });
+    mockPrismaClient.product.delete.mockRejectedValue({ code: "P2003" });
+
+    const res = await request(buildApp()).delete("/products/p1").set("x-test-role", "STAFF");
+
+    expect(res.status).toBe(409);
+  });
+
+  it("allows STAFF to delete a product with no orders", async () => {
+    mockPrismaClient.product.findUnique.mockResolvedValue({ id: "p1" });
+    mockPrismaClient.product.delete.mockResolvedValue({});
+
+    const res = await request(buildApp()).delete("/products/p1").set("x-test-role", "STAFF");
+
+    expect(res.status).toBe(204);
+  });
+
+  it("rejects STUDENT from deleting a product", async () => {
+    const res = await request(buildApp()).delete("/products/p1").set("x-test-role", "STUDENT");
+
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("POST /products/:productId/images", () => {
+  it("adds an image for STAFF", async () => {
+    mockPrismaClient.product.findUnique.mockResolvedValue({ id: "p1" });
+    mockPrismaClient.productImage.create.mockResolvedValue({ id: "img1", url: "https://x/y.png" });
+
+    const res = await request(buildApp())
+      .post("/products/p1/images")
+      .set("x-test-role", "STAFF")
+      .send({ url: "https://x/y.png" });
+
+    expect(res.status).toBe(201);
+    expect(res.body.url).toBe("https://x/y.png");
+  });
+
+  it("rejects a missing url", async () => {
+    mockPrismaClient.product.findUnique.mockResolvedValue({ id: "p1" });
+
+    const res = await request(buildApp())
+      .post("/products/p1/images")
+      .set("x-test-role", "STAFF")
+      .send({});
+
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("DELETE /products/:productId/images/:imageId", () => {
+  it("removes an image that belongs to the product", async () => {
+    mockPrismaClient.productImage.findUnique.mockResolvedValue({ id: "img1", productId: "p1" });
+    mockPrismaClient.productImage.delete.mockResolvedValue({});
+
+    const res = await request(buildApp())
+      .delete("/products/p1/images/img1")
+      .set("x-test-role", "STAFF");
+
+    expect(res.status).toBe(204);
+  });
+
+  it("404s when the image belongs to a different product", async () => {
+    mockPrismaClient.productImage.findUnique.mockResolvedValue({ id: "img1", productId: "other-product" });
+
+    const res = await request(buildApp())
+      .delete("/products/p1/images/img1")
+      .set("x-test-role", "STAFF");
 
     expect(res.status).toBe(404);
   });

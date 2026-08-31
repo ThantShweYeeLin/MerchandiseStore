@@ -52,10 +52,10 @@ router.post("/", requireAuth, requireRole("STUDENT"), async (req, res, next) => 
       include: { items: { include: { product: true } } },
     });
 
-    // Verify each claimed department separately; mixed discounted/full-price
-    // items in one order are expected.
-    let anyDiscount = false;
-    let total = 0;
+    // Verify each claimed department separately and remember its own result —
+    // one order can end up with a mix of discounted and full-price items
+    // depending on which departments EduCore actually verified.
+    const departmentVerified = {};
 
     for (const department of departmentsInOrder) {
       const { verified, raw } = await verifyEnrollment({
@@ -73,15 +73,17 @@ router.post("/", requireAuth, requireRole("STUDENT"), async (req, res, next) => 
         },
       });
 
-      if (verified) anyDiscount = true;
+      departmentVerified[department] = verified;
     }
 
-    // Simple total: apply a flat discount rate to items whose department verified.
-    // Replace with your actual per-item discount logic / rate.
     const DISCOUNT_RATE = 0.15;
+    let anyDiscount = false;
+    let total = 0;
     for (const item of order.items) {
+      const department = productMap.get(item.productId)?.category?.name;
       const lineTotal = Number(item.unitPrice) * item.quantity;
-      const deptVerified = anyDiscount; // refine to per-item department check as needed
+      const deptVerified = Boolean(department && departmentVerified[department]);
+      if (deptVerified) anyDiscount = true;
       total += deptVerified ? lineTotal * (1 - DISCOUNT_RATE) : lineTotal;
     }
 
@@ -109,6 +111,32 @@ router.get("/mine", requireAuth, requireRole("STUDENT"), async (req, res, next) 
     const orders = await prisma.order.findMany({
       where: { userId: req.user.id },
       include: { items: true },
+    });
+    res.json(orders);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// STAFF: orders containing at least one item from their own department.
+// ADMIN: every order, regardless of department.
+router.get("/", requireAuth, requireRole("STAFF", "ADMIN"), async (req, res, next) => {
+  try {
+    const where =
+      req.user.role === "ADMIN" || !req.user.department
+        ? {}
+        : {
+            items: {
+              some: { product: { category: { name: req.user.department } } },
+            },
+          };
+
+    const orders = await prisma.order.findMany({
+      where,
+      include: {
+        items: { include: { product: { include: { category: true } } } },
+        user: { select: { id: true, displayName: true, email: true } },
+      },
     });
     res.json(orders);
   } catch (err) {
