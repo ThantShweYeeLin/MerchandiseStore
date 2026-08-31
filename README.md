@@ -49,10 +49,14 @@ npm install
 npx prisma migrate dev
 npm run dev                  # runs the API on the host, hot-reload via nodemon
 ```
-With `AZURE_KEY_VAULT_NAME` left blank, `src/config/keyvault.js` reads
+With `AZURE_KEY_VAULT_NAME` left blank and `ALLOW_LOCAL_DEV_SECRETS=true` set
+(both already in `.env.example`), `src/config/keyvault.js` reads
 `DATABASE_URL`, `JWT_SECRET`, `AI_API_KEY`, `EDUCORE_API_KEY`, and
-`EDUCORE_INBOUND_KEY` straight from `.env` instead of calling Key Vault — this
-path is for local/team dev only.
+`EDUCORE_INBOUND_KEY` straight from `.env` instead of calling Key Vault. The
+explicit `ALLOW_LOCAL_DEV_SECRETS` flag exists so a production host that
+accidentally ends up with a blank `AZURE_KEY_VAULT_NAME` fails to boot
+instead of silently falling back to leftover/weak env secrets — production's
+env file should never set it.
 
 To instead run the whole stack (API + Postgres) fully containerized:
 ```bash

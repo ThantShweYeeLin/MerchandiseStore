@@ -24,18 +24,29 @@ router.get(
 
       const orders = await prisma.order.findMany({
         where: { userId: user.id },
-        include: { items: { include: { product: { include: { category: true } } } } },
+        include: {
+          items: { include: { product: { include: { category: true } } } },
+          peerVerificationLogs: true,
+        },
       });
 
       const orderCount = orders.length;
       const totalSpend = orders.reduce((sum, o) => sum + Number(o.totalAmount), 0);
 
+      // discountApplied is order-level ("at least one department verified"),
+      // but each order can mix discounted and full-price departments — so
+      // count usage per department using that order's own verification logs,
+      // not the order-wide flag.
       const discountUsageByDepartment = {};
       for (const order of orders) {
-        if (!order.discountApplied) continue;
+        const verifiedDepartments = new Set(
+          order.peerVerificationLogs.filter((log) => log.verified).map((log) => log.department)
+        );
+        if (verifiedDepartments.size === 0) continue;
+
         for (const item of order.items) {
           const dept = item.product.category?.name;
-          if (!dept) continue;
+          if (!dept || !verifiedDepartments.has(dept)) continue;
           discountUsageByDepartment[dept] = (discountUsageByDepartment[dept] || 0) + 1;
         }
       }

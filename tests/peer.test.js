@@ -44,8 +44,18 @@ describe("GET /peer/students/:studentId/orders", () => {
   it("returns a summary with no payment details for a known student", async () => {
     mockPrismaClient.user.findUnique.mockResolvedValue({ id: "u1", adObjectId: "ad-1" });
     mockPrismaClient.order.findMany.mockResolvedValue([
-      { totalAmount: 85, discountApplied: true, items: [{ product: { category: { name: "Computer Science" } } }] },
-      { totalAmount: 40, discountApplied: false, items: [{ product: { category: { name: "Business" } } }] },
+      {
+        totalAmount: 85,
+        discountApplied: true,
+        items: [{ product: { category: { name: "Computer Science" } } }],
+        peerVerificationLogs: [{ department: "Computer Science", verified: true }],
+      },
+      {
+        totalAmount: 40,
+        discountApplied: false,
+        items: [{ product: { category: { name: "Business" } } }],
+        peerVerificationLogs: [{ department: "Business", verified: false }],
+      },
     ]);
 
     const res = await request(buildApp())
@@ -59,5 +69,30 @@ describe("GET /peer/students/:studentId/orders", () => {
       totalSpend: 125,
       discountUsageByDepartment: { "Computer Science": 1 },
     });
+  });
+
+  it("only counts departments actually verified within a mixed order", async () => {
+    mockPrismaClient.user.findUnique.mockResolvedValue({ id: "u1", adObjectId: "ad-1" });
+    mockPrismaClient.order.findMany.mockResolvedValue([
+      {
+        totalAmount: 185,
+        discountApplied: true, // true because CS verified, even though Engineering didn't
+        items: [
+          { product: { category: { name: "Computer Science" } } },
+          { product: { category: { name: "Engineering" } } },
+        ],
+        peerVerificationLogs: [
+          { department: "Computer Science", verified: true },
+          { department: "Engineering", verified: false },
+        ],
+      },
+    ]);
+
+    const res = await request(buildApp())
+      .get("/peer/students/ad-1/orders")
+      .set("x-api-key", "expected-educore-key");
+
+    expect(res.body.discountUsageByDepartment).toEqual({ "Computer Science": 1 });
+    expect(res.body.discountUsageByDepartment.Engineering).toBeUndefined();
   });
 });

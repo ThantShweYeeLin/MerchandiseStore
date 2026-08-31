@@ -121,7 +121,13 @@ router.delete("/:id", requireAuth, requireRole("STAFF", "ADMIN"), async (req, re
     const existing = await prisma.product.findUnique({ where: { id: req.params.id } });
     if (!existing) return res.status(404).json({ error: "Not found" });
 
-    await prisma.product.delete({ where: { id: req.params.id } });
+    // Photos are pure sub-resources of the product, not an independent
+    // reason to block deletion — clear them first so a remaining P2003 can
+    // only mean the product is still referenced by an order.
+    await prisma.$transaction([
+      prisma.productImage.deleteMany({ where: { productId: req.params.id } }),
+      prisma.product.delete({ where: { id: req.params.id } }),
+    ]);
 
     await recordAudit({
       userId: req.user.id,

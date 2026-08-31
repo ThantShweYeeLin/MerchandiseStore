@@ -42,9 +42,13 @@ services:
       AD_ISSUER: ${AD_ISSUER}
       EDUCORE_BASE_URL: ${EDUCORE_BASE_URL}
       PORT: 3000
-      # Local/team dev fallback only, used when AZURE_KEY_VAULT_NAME is unset —
-      # see src/config/keyvault.js. Production (AZURE_KEY_VAULT_NAME set) reads
-      # the real values from Key Vault instead and ignores these.
+      # Local/team dev fallback only, used when AZURE_KEY_VAULT_NAME is unset
+      # AND ALLOW_LOCAL_DEV_SECRETS=true is explicitly set (see
+      # src/config/keyvault.js) — defaults to false here so an accidentally
+      # blank AZURE_KEY_VAULT_NAME in production fails loudly instead of
+      # silently booting on these values. .env.example sets it true for
+      # local/team dev; production's env file should leave it unset.
+      ALLOW_LOCAL_DEV_SECRETS: ${ALLOW_LOCAL_DEV_SECRETS:-false}
       #
       # DATABASE_URL is built from the same POSTGRES_* vars as the `db`
       # service (not from a host-facing DATABASE_URL in .env) because inside

@@ -14,8 +14,10 @@ const mockPrismaClient = {
     create: jest.fn(),
     findUnique: jest.fn(),
     delete: jest.fn(),
+    deleteMany: jest.fn(),
   },
   auditLog: { create: jest.fn() },
+  $transaction: jest.fn((ops) => Promise.all(ops)),
 };
 
 jest.mock("@prisma/client", () => ({
