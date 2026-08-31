@@ -1,10 +1,35 @@
 version: "3.9"
 
 services:
+  db:
+    image: postgres:16-alpine
+    container_name: merch-store-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-merchstore}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-merchstore}
+      POSTGRES_DB: ${POSTGRES_DB:-merchstore}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    ports:
+      # Host port is configurable (POSTGRES_HOST_PORT) since 5432 is often
+      # already taken by a locally-installed Postgres; the container always
+      # listens on 5432 internally, which is what "db:5432" inside the
+      # compose network (and the api container's DATABASE_URL) actually uses.
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-merchstore}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   merch-store-api:
     build: .
     container_name: merch-store-api
     restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
     ports:
       - "127.0.0.1:3000:3000" # only reachable via the Nginx reverse proxy
     environment:
@@ -17,4 +42,21 @@ services:
       AD_ISSUER: ${AD_ISSUER}
       EDUCORE_BASE_URL: ${EDUCORE_BASE_URL}
       PORT: 3000
+      # Local/team dev fallback only, used when AZURE_KEY_VAULT_NAME is unset —
+      # see src/config/keyvault.js. Production (AZURE_KEY_VAULT_NAME set) reads
+      # the real values from Key Vault instead and ignores these.
+      #
+      # DATABASE_URL is built from the same POSTGRES_* vars as the `db`
+      # service (not from a host-facing DATABASE_URL in .env) because inside
+      # this compose network Postgres is reachable at host "db", not
+      # "localhost" — running `npm run dev` on the host still uses the
+      # localhost DATABASE_URL from .env directly.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-merchstore}:${POSTGRES_PASSWORD:-merchstore}@db:5432/${POSTGRES_DB:-merchstore}
+      JWT_SECRET: ${JWT_SECRET:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      EDUCORE_API_KEY: ${EDUCORE_API_KEY:-}
+      EDUCORE_INBOUND_KEY: ${EDUCORE_INBOUND_KEY:-}
     # Migrations run as a one-off before start in the deploy script (see README)
+
+volumes:
+  db-data:

@@ -39,13 +39,31 @@ Nginx Reverse Proxy (TLS via Let's Encrypt) — class VPS
 - Access to the class Azure Key Vault, and an AD app registration for
   OIDC/MSAL login
 
-### Local development
+### Local development (team — no Azure Key Vault access needed)
+Every teammate can run this without any Azure/AD credentials. `.env` is
+gitignored, so copy it fresh and keep your own values.
 ```bash
+cp .env.example .env         # defaults work as-is; AZURE_KEY_VAULT_NAME stays blank
+docker compose up -d db      # starts local Postgres only
 npm install
-cp .env.example .env   # fill in your dev Key Vault / AD app values
 npx prisma migrate dev
-npm run dev
+npm run dev                  # runs the API on the host, hot-reload via nodemon
 ```
+With `AZURE_KEY_VAULT_NAME` left blank, `src/config/keyvault.js` reads
+`DATABASE_URL`, `JWT_SECRET`, `AI_API_KEY`, `EDUCORE_API_KEY`, and
+`EDUCORE_INBOUND_KEY` straight from `.env` instead of calling Key Vault — this
+path is for local/team dev only.
+
+To instead run the whole stack (API + Postgres) fully containerized:
+```bash
+docker compose up --build
+```
+
+### Local development against the real Key Vault (optional)
+If you do have access to a dev Key Vault, set `AZURE_KEY_VAULT_NAME` (and the
+`AZURE_CLIENT_ID`/`AZURE_TENANT_ID`/`AZURE_CLIENT_SECRET` app registration
+values) in `.env` instead, and leave the plain secret vars blank — Key Vault
+takes priority whenever `AZURE_KEY_VAULT_NAME` is set.
 
 ### Production deployment (VPS)
 1. Add the Nginx location block in `nginx/merch-store.conf` to the existing
@@ -55,10 +73,16 @@ npm run dev
    `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET`, `AD_JWKS_URI`,
    `AD_CLIENT_ID`, `AD_ISSUER`, `EDUCORE_BASE_URL`) wherever `docker-compose.yml`
    expects them (e.g. a shell profile or systemd env file — not committed).
-3. Store `DATABASE-URL`, `JWT-SECRET`, `AI-API-KEY`, `EDUCORE-API-KEY`, and
+3. `docker-compose.yml` also runs Postgres itself (the `db` service, backed
+   by a named volume) so the store doesn't depend on a separately managed
+   database. Set `DATABASE-URL` in Key Vault to
+   `postgresql://<POSTGRES_USER>:<POSTGRES_PASSWORD>@db:5432/<POSTGRES_DB>`,
+   using the same `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` values set
+   in the VPS's env file (not committed).
+4. Store `DATABASE-URL`, `JWT-SECRET`, `AI-API-KEY`, `EDUCORE-API-KEY`, and
    `EDUCORE-INBOUND-KEY` as secrets in the class Azure Key Vault (see
    `src/config/keyvault.js` for exact names expected).
-4. Run:
+5. Run:
    ```bash
    ./deploy.sh
    ```

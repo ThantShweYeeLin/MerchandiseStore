@@ -22,15 +22,42 @@ let cachedSecrets = null;
  * Fetches all runtime secrets from Azure Key Vault once at boot and caches them
  * in memory. Never persisted to disk, never logged.
  */
+// Maps each Key Vault secret name to the plain env var team members can set
+// instead, for local/team dev where nobody has Azure Key Vault access yet.
+const LOCAL_DEV_ENV_FALLBACK = {
+  "DATABASE-URL": "DATABASE_URL",
+  "JWT-SECRET": "JWT_SECRET",
+  "AI-API-KEY": "AI_API_KEY",
+  "EDUCORE-API-KEY": "EDUCORE_API_KEY",
+  "EDUCORE-INBOUND-KEY": "EDUCORE_INBOUND_KEY",
+};
+
 async function loadSecrets() {
   if (cachedSecrets) return cachedSecrets;
 
   const vaultName = process.env.AZURE_KEY_VAULT_NAME;
+
   if (!vaultName) {
-    throw new Error(
-      "AZURE_KEY_VAULT_NAME is not set. This is the only config allowed to come " +
-        "from the environment — everything else must be fetched from Key Vault."
-    );
+    // Local/team dev: no Key Vault access needed. Read the same secrets
+    // straight from the environment (see docker-compose.yml / .env.example).
+    // Production always sets AZURE_KEY_VAULT_NAME and skips this branch.
+    const fromEnv = {};
+    const missing = [];
+    for (const [secretName, envVar] of Object.entries(LOCAL_DEV_ENV_FALLBACK)) {
+      const value = process.env[envVar];
+      if (!value) missing.push(envVar);
+      fromEnv[secretName] = value;
+    }
+    if (missing.length) {
+      throw new Error(
+        "AZURE_KEY_VAULT_NAME is not set, and these local dev env vars are " +
+          `also missing: ${missing.join(", ")}. Set AZURE_KEY_VAULT_NAME for ` +
+          "the real Key Vault, or fill these in for local/team dev."
+      );
+    }
+
+    cachedSecrets = fromEnv;
+    return cachedSecrets;
   }
 
   const vaultUrl = `https://${vaultName}.vault.azure.net`;

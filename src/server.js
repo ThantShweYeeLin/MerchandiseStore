@@ -1,3 +1,8 @@
+// Loads .env into process.env for local/team dev (npm run dev on the host).
+// No-op in production and in docker-compose, where env vars already come
+// from the shell/compose environment and no .env file is present.
+require("dotenv").config();
+
 const { createApp } = require("./app");
 const { loadSecrets } = require("./config/keyvault");
 
