@@ -1,11 +1,13 @@
 const axios = require("axios");
 const { getSecret } = require("../config/keyvault");
 
+const GEMINI_MODEL = "gemini-2.0-flash";
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+
 /**
- * Calls a third-party AI text-generation API to draft an SEO-friendly product
- * description from the product name + category. Swap the URL/payload shape
- * for whichever provider you pick (OpenAI, Gemini, etc.) — this stub uses a
- * generic chat-completions style call.
+ * Calls Google's Gemini API to draft an SEO-friendly product description
+ * from the product name + category. AI-API-KEY is a Gemini API key from
+ * Google AI Studio (https://aistudio.google.com/apikey).
  */
 async function generateProductDescription({ name, categoryName }) {
   const apiKey = getSecret("AI-API-KEY");
@@ -16,22 +18,21 @@ async function generateProductDescription({ name, categoryName }) {
     `Friendly, upbeat tone, no emojis.`;
 
   const response = await axios.post(
-    "https://api.openai.com/v1/chat/completions",
+    GEMINI_URL,
     {
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 150,
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { maxOutputTokens: 150 },
     },
     {
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        "x-goog-api-key": apiKey,
         "Content-Type": "application/json",
       },
       timeout: 8000,
     }
   );
 
-  return response.data.choices[0].message.content.trim();
+  return response.data.candidates[0].content.parts[0].text.trim();
 }
 
 module.exports = { generateProductDescription };

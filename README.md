@@ -121,10 +121,10 @@ This project partners with **[classmate/team name — fill in]**, who runs
 ## Other External Integration
 
 **AI-generated product descriptions** — when STAFF/ADMIN create or update a
-product, `src/services/aiDescription.js` calls a third-party AI
-text-generation API (OpenAI-compatible endpoint by default) with the product
-name and category, and saves the returned SEO-friendly description straight
-onto the `Product` record.
+product, `src/services/aiDescription.js` calls Google's Gemini API with the
+product name and category, and saves the returned SEO-friendly description
+straight onto the `Product` record. `AI-API-KEY` is a Gemini API key from
+[Google AI Studio](https://aistudio.google.com/apikey) (free tier).
 
 ## Project Structure
 ```
