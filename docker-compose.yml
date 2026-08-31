@@ -1,0 +1,20 @@
+version: "3.9"
+
+services:
+  merch-store-api:
+    build: .
+    container_name: merch-store-api
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000" # only reachable via the Nginx reverse proxy
+    environment:
+      AZURE_KEY_VAULT_NAME: ${AZURE_KEY_VAULT_NAME}
+      AZURE_CLIENT_ID: ${AZURE_CLIENT_ID}
+      AZURE_TENANT_ID: ${AZURE_TENANT_ID}
+      AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET}
+      AD_JWKS_URI: ${AD_JWKS_URI}
+      AD_CLIENT_ID: ${AD_CLIENT_ID}
+      AD_ISSUER: ${AD_ISSUER}
+      EDUCORE_BASE_URL: ${EDUCORE_BASE_URL}
+      PORT: 3000
+    # Migrations run as a one-off before start in the deploy script (see README)
