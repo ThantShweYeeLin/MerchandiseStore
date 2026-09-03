@@ -2,6 +2,7 @@ const express = require("express");
 const helmet = require("helmet");
 const cors = require("cors");
 const morgan = require("morgan");
+const { PrismaClient } = require("@prisma/client");
 
 const categoriesRouter = require("./routes/categories");
 const productsRouter = require("./routes/products");
@@ -11,13 +12,27 @@ const adminRouter = require("./routes/admin");
 
 function createApp() {
   const app = express();
+  const prisma = new PrismaClient();
 
   app.use(helmet());
   app.use(cors());
   app.use(express.json());
   app.use(morgan("combined"));
 
-  app.get("/health", (req, res) => res.json({ status: "ok" }));
+  // Actually checks DB connectivity — a 200 here means the app can serve
+  // real requests, not just that the Node process is alive.
+  app.get("/health", async (req, res) => {
+    const body = { status: "ok", service: "merchandise-store", timestamp: new Date().toISOString() };
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      body.db = "ok";
+      res.json(body);
+    } catch (err) {
+      body.status = "error";
+      body.db = "unreachable";
+      res.status(503).json(body);
+    }
+  });
 
   // All routes below are served under /store by Nginx (see nginx/merch-store.conf)
   app.use("/categories", categoriesRouter);
