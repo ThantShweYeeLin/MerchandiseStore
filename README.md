@@ -63,6 +63,29 @@ To instead run the whole stack (API + Postgres) fully containerized:
 docker compose up --build
 ```
 
+### Full end-to-end testing without real AD or EduCore access
+`POST /products` and `POST /orders` require a real AD-issued JWT, and order
+placement calls EduCore — neither is available outside the university's
+actual AD/EduCore. `mock-ad/server.js` and `mock-educore/server.js` stand in
+for both, so the entire flow (staff login → create product → student login →
+place order → discount) can be run live via curl/Postman, not just jest:
+```bash
+node mock-ad/server.js       # :4001 — fake AD/JWKS + token minting
+node mock-educore/server.js  # :4000 — fake EduCore enrollment check
+AD_JWKS_URI=http://localhost:4001/discovery/v2.0/keys \
+AD_ISSUER=http://localhost:4001 \
+AD_CLIENT_ID=mock-client-id \
+EDUCORE_BASE_URL=http://localhost:4000 \
+npm run dev
+
+# mint a token for any role:
+curl -X POST http://localhost:4001/mock-login -H "Content-Type: application/json" \
+  -d '{"role":"STAFF","adObjectId":"ad-staff-1","email":"staff@example.edu"}'
+# -> { "token": "..." }, use as: -H "Authorization: Bearer <token>"
+```
+Both mocks are dev-only tooling, never used in production (real AD/EduCore
+are always used there instead).
+
 ### Local development against the real Key Vault (optional)
 If you do have access to a dev Key Vault, set `AZURE_KEY_VAULT_NAME` (and the
 `AZURE_CLIENT_ID`/`AZURE_TENANT_ID`/`AZURE_CLIENT_SECRET` app registration
