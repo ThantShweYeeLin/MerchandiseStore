@@ -118,6 +118,23 @@ This project partners with **[classmate/team name — fill in]**, who runs
 - **Purpose**: lets EduCore fold our discount-usage data into their own
   department-enrollment reporting without direct database access.
 
+### Everything above is an assumption until EduCore confirms otherwise
+The request/response shape, the student identifier (`adObjectId` vs. a
+university student ID number), and department naming (`"Computer Science"`
+vs. a short code) are all this project's best guess, not a confirmed
+contract — agree these with the EduCore team before treating them as fixed.
+
+### Testing this integration before EduCore is reachable
+`mock-educore/server.js` is a tiny local stand-in matching the *current*
+assumed contract exactly (`GET /enrollment/verify?studentId=&department=`,
+returns `{ verified: boolean }`). Update it alongside `eduCoreClient.js` if
+the real contract ends up different.
+```bash
+node mock-educore/server.js          # listens on :4000
+# then point the real app at it:
+EDUCORE_BASE_URL=http://localhost:4000 npm run dev
+```
+
 ## Other External Integration
 
 **AI-generated product descriptions** — when STAFF/ADMIN create or update a
