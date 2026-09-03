@@ -123,6 +123,8 @@ The request/response shape, the student identifier (`adObjectId` vs. a
 university student ID number), and department naming (`"Computer Science"`
 vs. a short code) are all this project's best guess, not a confirmed
 contract — agree these with the EduCore team before treating them as fixed.
+See [`docs/educore-contract.md`](docs/educore-contract.md) for the full
+draft contract and open questions to resolve with them.
 
 ### Testing this integration before EduCore is reachable
 `mock-educore/server.js` is a tiny local stand-in matching the *current*
