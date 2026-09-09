@@ -25,6 +25,20 @@ router.get("/audit-log", requireAuth, requireRole("ADMIN"), async (req, res, nex
   }
 });
 
+// ADMIN only: list users, so an ADMIN can actually find the :id needed for
+// the role-override endpoint below instead of querying the DB directly.
+router.get("/users", requireAuth, requireRole("ADMIN"), async (req, res, next) => {
+  try {
+    const users = await prisma.user.findMany({
+      orderBy: { createdAt: "desc" },
+      select: { id: true, displayName: true, email: true, department: true, role: true, createdAt: true },
+    });
+    res.json(users);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ADMIN only: override a user's role (roles otherwise sync from AD group
 // claims on login — this is for manual correction/edge cases).
 router.patch("/users/:id/role", requireAuth, requireRole("ADMIN"), async (req, res, next) => {
