@@ -1,53 +1,70 @@
-import React, { useState, useMemo } from "react";
-import { Plus, Pencil, Trash2, X, Sparkles, Loader2, LayoutGrid, Tag } from "lucide-react";
+import React, { useState, useMemo, useEffect } from "react";
+import { Plus, Pencil, Trash2, X, Loader2, LayoutGrid, Tag } from "lucide-react";
+import { API_BASE_URL } from "./config";
 
 /* ------------------------------------------------------------------ */
-/* API layer — stand-ins for the real backend endpoints.               */
-/* Swap these for real fetch() calls once the Express API is live.     */
+/* API layer — real calls against the Express backend. The backend has  */
+/* one flat Category per product (it doubles as the "department"       */
+/* checked for a discount) — there's no separate department field.     */
 /* ------------------------------------------------------------------ */
 
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-
-// GET /store/categories
-async function fetchCategories() {
-  await wait(200);
-  return CATEGORIES;
+function authHeaders(token) {
+  return { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
 }
 
-// POST /store/products  or  PUT /store/products/:id
-async function saveProduct(product) {
-  await wait(400);
-  return { ...product, id: product.id ?? `p${Math.random().toString(36).slice(2, 8)}` };
+async function fetchCategories(token) {
+  const res = await fetch(`${API_BASE_URL}/categories`, { headers: authHeaders(token) });
+  if (!res.ok) throw new Error(`Failed to load categories (${res.status})`);
+  return res.json();
 }
 
-// DELETE /store/products/:id
-async function deleteProductApi(id) {
-  await wait(300);
-  return { id };
+async function createCategory(name, token) {
+  const res = await fetch(`${API_BASE_URL}/categories`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error(`Failed to create category (${res.status})`);
+  return res.json();
 }
 
-// POST /store/products/:id/generate-description
-// Backend sends {name, category} to the third-party AI text-gen API and
-// returns an SEO-friendly description, which gets saved on the Product row.
-async function generateDescription({ name, category }) {
-  await wait(900);
-  if (!name) return "";
-  return `Show your ${category ? category.toLowerCase() + " " : ""}pride with the official ${name}. Crafted for everyday campus wear, it's built to last through classes, events, and everything in between.`;
+async function fetchProducts(token) {
+  const res = await fetch(`${API_BASE_URL}/products`, { headers: authHeaders(token) });
+  if (!res.ok) throw new Error(`Failed to load products (${res.status})`);
+  return res.json();
 }
 
-/* ------------------------------------------------------------------ */
-/* Mock starting data — stand-in for GET /store/products               */
-/* ------------------------------------------------------------------ */
+// POST /products or PUT /products/:id — the AI description is generated
+// automatically server-side on save, not on demand from the UI.
+async function saveProduct(product, token) {
+  const body = JSON.stringify({
+    name: product.name,
+    slug: product.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, ""),
+    price: Number(product.price),
+    categoryId: product.categoryId,
+    stock: Number(product.stock) || 0,
+  });
+  const res = await fetch(
+    product.id ? `${API_BASE_URL}/products/${product.id}` : `${API_BASE_URL}/products`,
+    { method: product.id ? "PUT" : "POST", headers: authHeaders(token), body }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Failed to save product (${res.status})`);
+  }
+  return res.json();
+}
 
-const CATEGORIES = ["Apparel", "Drinkware", "Bags", "Stationery"];
-
-const INITIAL_PRODUCTS = [
-  { id: "p1", name: "Assumption University Hoodie", category: "Apparel", department: "", price: 890, stock: 42, description: "Heavyweight fleece, embroidered crest." },
-  { id: "p2", name: "CS Dept. Zip Jacket", category: "Apparel", department: "Computer Science", price: 1290, stock: 18, description: "Windbreaker shell, department discount eligible." },
-  { id: "p3", name: "Engineering Faculty Mug", category: "Drinkware", department: "Engineering", price: 220, stock: 120, description: "Ceramic, dishwasher safe, faculty seal." },
-];
-
-const DEPARTMENTS = ["", "Computer Science", "Engineering", "Business Administration", "Nursing", "Architecture"];
+async function deleteProductApi(id, token) {
+  const res = await fetch(`${API_BASE_URL}/products/${id}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+  if (!res.ok && res.status !== 204) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Failed to delete product (${res.status})`);
+  }
+}
 
 /* ------------------------------------------------------------------ */
 /* Design tokens — matches the storefront's red/white scheme            */
@@ -76,7 +93,7 @@ const styles = {
   },
 };
 
-const emptyForm = { id: null, name: "", category: CATEGORIES[0], department: "", price: "", stock: "", description: "" };
+const emptyForm = { id: null, name: "", categoryId: "", price: "", stock: "" };
 
 /* ------------------------------------------------------------------ */
 /* Small pieces                                                        */
@@ -132,18 +149,13 @@ function ProductRow({ product, onEdit, onDelete }) {
       <td style={{ padding: "12px 14px" }}>
         <div style={{ fontWeight: 600, fontSize: 14 }}>{product.name}</div>
         <div style={{ fontSize: 12.5, color: COLORS.muted, marginTop: 2, maxWidth: 320 }}>
-          {product.description}
+          {product.description || <em>No AI description yet</em>}
         </div>
       </td>
-      <td style={{ padding: "12px 14px", fontSize: 13 }}>{product.category}</td>
       <td style={{ padding: "12px 14px", fontSize: 13 }}>
-        {product.department ? (
-          <span style={{ background: COLORS.redSoft, color: COLORS.redDeep, fontSize: 11.5, padding: "3px 8px", borderRadius: 3, fontWeight: 600 }}>
-            {product.department}
-          </span>
-        ) : (
-          <span style={{ color: COLORS.muted }}>—</span>
-        )}
+        <span style={{ background: COLORS.redSoft, color: COLORS.redDeep, fontSize: 11.5, padding: "3px 8px", borderRadius: 3, fontWeight: 600 }}>
+          {product.categoryName}
+        </span>
       </td>
       <td style={{ padding: "12px 14px", fontSize: 13, ...styles.display, fontWeight: 700 }}>฿{product.price}</td>
       <td style={{ padding: "12px 14px", fontSize: 13 }}>
@@ -173,11 +185,23 @@ const iconBtn = {
   display: "inline-flex",
 };
 
-function ProductFormModal({ open, form, setForm, onClose, onSave, generating, onGenerateDescription }) {
+function ProductFormModal({ open, form, setForm, categories, onAddCategory, onClose, onSave, saving, saveError }) {
   if (!open) return null;
   const isEdit = Boolean(form.id);
 
   const update = (field) => (e) => setForm({ ...form, [field]: e.target.value });
+
+  const handleCategoryChange = async (e) => {
+    if (e.target.value === "__new__") {
+      const name = window.prompt("New category / department name (e.g. \"Business\")");
+      if (name && name.trim()) {
+        const category = await onAddCategory(name.trim());
+        setForm((f) => ({ ...f, categoryId: category.id }));
+      }
+      return;
+    }
+    setForm({ ...form, categoryId: e.target.value });
+  };
 
   return (
     <div
@@ -201,22 +225,15 @@ function ProductFormModal({ open, form, setForm, onClose, onSave, generating, on
           <input value={form.name} onChange={update("name")} placeholder="e.g. CS Dept. Zip Jacket" style={inputStyle} />
         </Field>
 
-        <div style={{ display: "flex", gap: 12 }}>
-          <Field label="Category" grow>
-            <select value={form.category} onChange={update("category")} style={inputStyle}>
-              {CATEGORIES.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Department (optional)" grow>
-            <select value={form.department} onChange={update("department")} style={inputStyle}>
-              {DEPARTMENTS.map((d) => (
-                <option key={d || "none"} value={d}>{d || "None"}</option>
-              ))}
-            </select>
-          </Field>
-        </div>
+        <Field label="Category (also used as the department checked for a discount)">
+          <select value={form.categoryId} onChange={handleCategoryChange} style={inputStyle}>
+            <option value="">Select category</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+            <option value="__new__">+ New category…</option>
+          </select>
+        </Field>
 
         <div style={{ display: "flex", gap: 12 }}>
           <Field label="Price (฿)" grow>
@@ -227,45 +244,19 @@ function ProductFormModal({ open, form, setForm, onClose, onSave, generating, on
           </Field>
         </div>
 
-        <Field
-          label="Description"
-          action={
-            <button
-              onClick={onGenerateDescription}
-              disabled={generating || !form.name}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 5,
-                background: "none",
-                border: "none",
-                color: !form.name ? COLORS.muted : COLORS.red,
-                fontSize: 12.5,
-                fontWeight: 600,
-                cursor: !form.name ? "default" : "pointer",
-                padding: 0,
-              }}
-            >
-              {generating ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={13} />}
-              {generating ? "Generating…" : "Generate with AI"}
-            </button>
-          }
-        >
-          <textarea
-            value={form.description}
-            onChange={update("description")}
-            rows={3}
-            placeholder="Describe the product, or generate one from the name + category"
-            style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }}
-          />
-        </Field>
-        <div style={{ fontSize: 11.5, color: COLORS.muted, marginTop: -8, marginBottom: 16 }}>
-          Sends the product name and category to the AI text-generation API and fills this field with the result.
+        <div style={{ fontSize: 11.5, color: COLORS.muted, marginBottom: 16, lineHeight: 1.5, background: COLORS.bg, padding: "8px 10px", borderRadius: 4 }}>
+          The description isn't typed here — saving sends the name and category to the AI text-generation API, and the result is saved automatically (visible in the table after saving).
         </div>
+
+        {saveError && (
+          <div style={{ background: "#FBEAEC", color: COLORS.redDeep, fontSize: 12.5, padding: "9px 11px", borderRadius: 5, marginBottom: 14 }}>
+            {saveError}
+          </div>
+        )}
 
         <button
           onClick={onSave}
-          disabled={!form.name || !form.price}
+          disabled={!form.name || !form.price || !form.categoryId || saving}
           style={{
             width: "100%",
             background: COLORS.red,
@@ -275,11 +266,24 @@ function ProductFormModal({ open, form, setForm, onClose, onSave, generating, on
             borderRadius: 5,
             fontSize: 14.5,
             fontWeight: 700,
-            cursor: !form.name || !form.price ? "default" : "pointer",
-            opacity: !form.name || !form.price ? 0.5 : 1,
+            cursor: !form.name || !form.price || !form.categoryId || saving ? "default" : "pointer",
+            opacity: !form.name || !form.price || !form.categoryId ? 0.5 : 1,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
           }}
         >
-          {isEdit ? "Save changes" : "Add product"}
+          {saving ? (
+            <>
+              <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} />
+              Saving…
+            </>
+          ) : isEdit ? (
+            "Save changes"
+          ) : (
+            "Add product"
+          )}
         </button>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
@@ -313,48 +317,89 @@ const inputStyle = {
 /* Root component                                                       */
 /* ------------------------------------------------------------------ */
 
-export default function AdminCatalog() {
-  const [products, setProducts] = useState(INITIAL_PRODUCTS);
+export default function AdminCatalog({ token }) {
+  const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
-  const [generating, setGenerating] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
   const [categoryFilter, setCategoryFilter] = useState("All");
 
+  const categoryById = useMemo(() => new Map(categories.map((c) => [c.id, c.name])), [categories]);
+  const productsWithCategoryName = useMemo(
+    () => products.map((p) => ({ ...p, categoryName: p.category?.name ?? categoryById.get(p.categoryId) ?? "—" })),
+    [products, categoryById]
+  );
+
+  const loadAll = async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const [cats, prods] = await Promise.all([fetchCategories(token), fetchProducts(token)]);
+      setCategories(cats);
+      setProducts(prods);
+    } catch (err) {
+      setLoadError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
   const filtered = useMemo(
-    () => (categoryFilter === "All" ? products : products.filter((p) => p.category === categoryFilter)),
-    [products, categoryFilter]
+    () => (categoryFilter === "All" ? productsWithCategoryName : productsWithCategoryName.filter((p) => p.categoryName === categoryFilter)),
+    [productsWithCategoryName, categoryFilter]
   );
 
   const openNew = () => {
     setForm(emptyForm);
+    setSaveError(null);
     setModalOpen(true);
   };
 
   const openEdit = (product) => {
-    setForm(product);
+    setForm({ id: product.id, name: product.name, categoryId: product.category?.id ?? product.categoryId, price: product.price, stock: product.stock });
+    setSaveError(null);
     setModalOpen(true);
   };
 
-  const handleGenerateDescription = async () => {
-    setGenerating(true);
-    const description = await generateDescription({ name: form.name, category: form.category });
-    setForm((f) => ({ ...f, description }));
-    setGenerating(false);
+  const handleAddCategory = async (name) => {
+    const category = await createCategory(name, token);
+    setCategories((prev) => [...prev, category]);
+    return category;
   };
 
   const handleSave = async () => {
-    const saved = await saveProduct({ ...form, price: Number(form.price), stock: Number(form.stock) || 0 });
-    setProducts((prev) => {
-      const exists = prev.some((p) => p.id === saved.id);
-      return exists ? prev.map((p) => (p.id === saved.id ? saved : p)) : [...prev, saved];
-    });
-    setModalOpen(false);
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await saveProduct(form, token);
+      setModalOpen(false);
+      await loadAll(); // re-fetch so the table reflects the AI-generated description too
+    } catch (err) {
+      setSaveError(err.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDelete = async (id) => {
-    await deleteProductApi(id);
-    setProducts((prev) => prev.filter((p) => p.id !== id));
+    try {
+      await deleteProductApi(id, token);
+      await loadAll();
+    } catch (err) {
+      setLoadError(err.message);
+    }
   };
+
+  const categoryNames = ["All", ...new Set(categories.map((c) => c.name))];
 
   return (
     <div style={styles.app}>
@@ -388,8 +433,14 @@ export default function AdminCatalog() {
           </button>
         </div>
 
+        {loadError && (
+          <div style={{ background: "#FBEAEC", color: COLORS.redDeep, padding: "12px 14px", borderRadius: 5, marginBottom: 18, fontSize: 13.5 }}>
+            {loadError} — is the backend running on {`localhost:3000`}?
+          </div>
+        )}
+
         <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
-          {["All", ...CATEGORIES].map((c) => (
+          {categoryNames.map((c) => (
             <button
               key={c}
               onClick={() => setCategoryFilter(c)}
@@ -409,7 +460,9 @@ export default function AdminCatalog() {
         </div>
 
         <div style={{ background: COLORS.white, border: `1px solid ${COLORS.line}`, borderRadius: 8, overflow: "hidden" }}>
-          {filtered.length === 0 ? (
+          {loading ? (
+            <div style={{ padding: 40, textAlign: "center", color: COLORS.muted, fontSize: 14 }}>Loading…</div>
+          ) : filtered.length === 0 ? (
             <div style={{ padding: 40, textAlign: "center", color: COLORS.muted, fontSize: 14 }}>
               <LayoutGrid size={22} style={{ marginBottom: 8, opacity: 0.5 }} />
               <div>No products in this category yet.</div>
@@ -419,8 +472,7 @@ export default function AdminCatalog() {
               <thead>
                 <tr style={{ background: COLORS.bg, borderBottom: `1px solid ${COLORS.line}` }}>
                   <Th>Product</Th>
-                  <Th>Category</Th>
-                  <Th><Tag size={12} style={{ marginRight: 4, verticalAlign: -1 }} />Department</Th>
+                  <Th><Tag size={12} style={{ marginRight: 4, verticalAlign: -1 }} />Category / department</Th>
                   <Th>Price</Th>
                   <Th>Stock</Th>
                   <Th align="right">Actions</Th>
@@ -440,10 +492,12 @@ export default function AdminCatalog() {
         open={modalOpen}
         form={form}
         setForm={setForm}
+        categories={categories}
+        onAddCategory={handleAddCategory}
         onClose={() => setModalOpen(false)}
         onSave={handleSave}
-        generating={generating}
-        onGenerateDescription={handleGenerateDescription}
+        saving={saving}
+        saveError={saveError}
       />
     </div>
   );

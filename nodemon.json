@@ -1,0 +1,5 @@
+{
+  "watch": ["src"],
+  "ignore": ["frontend/**", "mock-ad/**", "mock-educore/**", "node_modules/**", "prisma/migrations/**"],
+  "ext": "js,mjs,cjs,json"
+}

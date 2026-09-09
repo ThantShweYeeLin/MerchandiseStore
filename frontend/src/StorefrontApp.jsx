@@ -1,63 +1,63 @@
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { ShoppingBag, X, Check, ChevronRight, Loader2, ShieldCheck, ShieldAlert, Menu } from "lucide-react";
 import ProductDetail from "./ProductDetail";
+import { API_BASE_URL } from "./config";
 
 /* ------------------------------------------------------------------ */
-/* API layer — thin wrappers matching the endpoints in the proposal.   */
-/* Swap the bodies of these functions for real fetch() calls against   */
-/* /store/... once the backend is deployed. Everything else in this    */
-/* file is written against these function signatures, so that's the    */
-/* only place that needs to change.                                    */
+/* API layer — real calls against the Express backend.                 */
 /* ------------------------------------------------------------------ */
 
-const MOCK_LATENCY = 550;
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-
-// GET /store/products
-async function fetchProducts() {
-  await wait(300);
-  return PRODUCTS;
+// GET /products — the backend has one flat Category per product (it doubles
+// as the "department" checked for a discount), unlike this UI's original
+// mock data which had a separate category/department split. category and
+// department are both set to the same name here so the rest of this file
+// (written against the old two-field shape) needs no further changes.
+async function fetchProducts(token) {
+  const res = await fetch(`${API_BASE_URL}/products`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to load products (${res.status})`);
+  const products = await res.json();
+  return products.map((p) => ({
+    id: p.id,
+    name: p.name,
+    category: p.category?.name ?? "Uncategorized",
+    department: p.category?.name ?? null,
+    price: Number(p.price),
+    stock: p.stock,
+    blurb: p.description || "No description yet.",
+    images: p.images,
+  }));
 }
 
-// POST /store/orders  ->  triggers EduCore verification server-side per
-// department claimed, then returns the priced order.
-async function placeOrder({ items, department }) {
-  await wait(MOCK_LATENCY);
-  // Simulated EduCore response — real call is server-to-server in prod.
-  const verified = department ? Math.random() > 0.25 : false;
+// POST /orders — the backend auto-detects every department represented in
+// the cart and verifies each one separately server-side (no manual "claim
+// discount" step needed); the response's peerVerificationLogs is the real
+// per-department result (see docs/educore-contract.md).
+async function placeOrder({ items, token }) {
+  const res = await fetch(`${API_BASE_URL}/orders`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      items: items.map((i) => ({ productId: i.product.id, quantity: i.qty })),
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Order failed (${res.status})`);
+  }
+  const order = await res.json();
   const subtotal = items.reduce((sum, i) => sum + i.product.price * i.qty, 0);
-  const discount = verified
-    ? items
-        .filter((i) => i.product.department === department)
-        .reduce((sum, i) => sum + i.product.price * i.qty * 0.15, 0)
-    : 0;
   return {
-    orderId: `ORD-${Math.floor(Math.random() * 90000 + 10000)}`,
-    status: "PAID",
+    orderId: order.id,
+    status: order.status,
     subtotal,
-    discount,
-    total: subtotal - discount,
-    discountApplied: verified,
-    department,
+    discount: subtotal - Number(order.totalAmount),
+    total: Number(order.totalAmount),
+    discountApplied: order.discountApplied,
+    verifications: order.peerVerificationLogs || [],
   };
 }
-
-/* ------------------------------------------------------------------ */
-/* Mock catalog data — stand-in for GET /store/products                */
-/* ------------------------------------------------------------------ */
-
-const PRODUCTS = [
-  { id: "p1", name: "Assumption University Hoodie", category: "Apparel", department: null, price: 890, stock: 42, blurb: "Heavyweight fleece, embroidered crest." },
-  { id: "p2", name: "CS Dept. Zip Jacket", category: "Apparel", department: "Computer Science", price: 1290, stock: 18, blurb: "Windbreaker shell, department discount eligible." },
-  { id: "p3", name: "Engineering Faculty Mug", category: "Drinkware", department: "Engineering", price: 220, stock: 120, blurb: "Ceramic, dishwasher safe, faculty seal." },
-  { id: "p4", name: "Campus Classic Tee", category: "Apparel", department: null, price: 350, stock: 200, blurb: "100% cotton, unisex fit." },
-  { id: "p5", name: "Business School Tote", category: "Bags", department: "Business Administration", price: 290, stock: 60, blurb: "Canvas, reinforced base." },
-  { id: "p6", name: "Nursing Dept. Scrub Cap", category: "Apparel", department: "Nursing", price: 180, stock: 75, blurb: "Adjustable, breathable cotton blend." },
-  { id: "p7", name: "University Notebook Set", category: "Stationery", department: null, price: 150, stock: 300, blurb: "Set of 3, dotted pages." },
-  { id: "p8", name: "Architecture Studio Tumbler", category: "Drinkware", department: "Architecture", price: 340, stock: 40, blurb: "Insulated, 500ml." },
-];
-
-const DEPARTMENTS = ["Computer Science", "Engineering", "Business Administration", "Nursing", "Architecture"];
 
 /* ------------------------------------------------------------------ */
 /* Design tokens                                                       */
@@ -360,23 +360,26 @@ const qtyBtn = {
   lineHeight: 1,
 };
 
-function CheckoutView({ cart, onBack, onDone }) {
-  const [department, setDepartment] = useState("");
-  const [claimDiscount, setClaimDiscount] = useState(false);
-  const [status, setStatus] = useState("idle"); // idle | verifying | done
+function CheckoutView({ cart, token, onBack, onDone }) {
+  const [status, setStatus] = useState("idle"); // idle | verifying | done | error
   const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
 
-  const hasEligibleItem = cart.some((i) => i.product.department);
-  const eligibleDepartments = [...new Set(cart.filter((i) => i.product.department).map((i) => i.product.department))];
+  // Every department represented in the cart gets checked automatically,
+  // server-side, once per department — no manual "claim discount" step.
+  const departmentsInCart = [...new Set(cart.filter((i) => i.product.department).map((i) => i.product.department))];
 
   const submit = async () => {
     setStatus("verifying");
-    const res = await placeOrder({
-      items: cart,
-      department: claimDiscount ? department : null,
-    });
-    setResult(res);
-    setStatus("done");
+    setError(null);
+    try {
+      const res = await placeOrder({ items: cart, token });
+      setResult(res);
+      setStatus("done");
+    } catch (err) {
+      setError(err.message);
+      setStatus("error");
+    }
   };
 
   if (status === "done" && result) {
@@ -401,35 +404,43 @@ function CheckoutView({ cart, onBack, onDone }) {
 
         <div style={{ background: "#fff", border: `1px solid ${COLORS.line}`, borderRadius: 6, padding: 20, textAlign: "left", fontSize: 14 }}>
           <Row label="Subtotal" value={`฿${result.subtotal.toFixed(0)}`} />
-          {result.discountApplied ? (
+          {result.discount > 0 && (
             <Row
               label={
                 <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <ShieldCheck size={15} color={COLORS.navy} /> {result.department} discount
+                  <ShieldCheck size={15} color={COLORS.navy} /> Department discount
                 </span>
               }
               value={`−฿${result.discount.toFixed(0)}`}
             />
-          ) : claimDiscount ? (
-            <Row
-              label={
-                <span style={{ display: "flex", alignItems: "center", gap: 6, color: COLORS.maroon }}>
-                  <ShieldAlert size={15} /> Enrollment not verified
-                </span>
-              }
-              value="฿0"
-            />
-          ) : null}
+          )}
           <div style={{ borderTop: `1px solid ${COLORS.line}`, marginTop: 10, paddingTop: 10, display: "flex", justifyContent: "space-between", ...styles.display, fontWeight: 700, fontSize: 17 }}>
             <span>Total</span>
             <span>฿{result.total.toFixed(0)}</span>
           </div>
         </div>
 
-        {claimDiscount && !result.discountApplied && (
-          <div style={{ fontSize: 12.5, color: "#8A8371", marginTop: 12, lineHeight: 1.5 }}>
-            EduCore couldn't confirm your enrollment in {department} right now, so this order was charged at full price.
-            You can request a manual recheck afterward.
+        {result.verifications.length > 0 && (
+          <div style={{ background: "#fff", border: `1px solid ${COLORS.line}`, borderRadius: 6, padding: 16, marginTop: 14, textAlign: "left" }}>
+            <div style={{ fontSize: 11.5, color: "#8A8371", fontWeight: 600, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.03em" }}>
+              Enrollment checks (one per department, real-time)
+            </div>
+            {result.verifications.map((v) => (
+              <div key={v.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, padding: "5px 0" }}>
+                {v.verified ? (
+                  <ShieldCheck size={15} color={COLORS.navy} />
+                ) : (
+                  <ShieldAlert size={15} color={COLORS.maroon} />
+                )}
+                <span>{v.department}</span>
+                <span style={{ marginLeft: "auto", color: v.verified ? COLORS.navy : COLORS.maroon, fontWeight: 600 }}>
+                  {v.verified ? "Verified" : "Not verified"}
+                </span>
+              </div>
+            ))}
+            <div style={{ fontSize: 12, color: "#8A8371", marginTop: 8, lineHeight: 1.5 }}>
+              Full price applies to any department that couldn't be verified — no discount is given by default if the check fails.
+            </div>
           </div>
         )}
 
@@ -460,29 +471,10 @@ function CheckoutView({ cart, onBack, onDone }) {
       </button>
       <div style={{ ...styles.display, fontSize: 24, fontWeight: 700, marginBottom: 18 }}>Checkout</div>
 
-      {hasEligibleItem && (
-        <div style={{ background: "#fff", border: `1px solid ${COLORS.line}`, borderRadius: 6, padding: 18, marginBottom: 20 }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14, cursor: "pointer" }}>
-            <input type="checkbox" checked={claimDiscount} onChange={(e) => setClaimDiscount(e.target.checked)} />
-            Claim department discount on eligible items
-          </label>
-          {claimDiscount && (
-            <div style={{ marginTop: 12 }}>
-              <div style={{ fontSize: 12.5, color: "#8A8371", marginBottom: 6 }}>
-                We'll verify your enrollment with EduCore before applying it.
-              </div>
-              <select
-                value={department}
-                onChange={(e) => setDepartment(e.target.value)}
-                style={{ width: "100%", padding: "9px 10px", borderRadius: 4, border: `1px solid ${COLORS.line}`, fontSize: 14 }}
-              >
-                <option value="">Select department</option>
-                {eligibleDepartments.map((d) => (
-                  <option key={d} value={d}>{d}</option>
-                ))}
-              </select>
-            </div>
-          )}
+      {departmentsInCart.length > 0 && (
+        <div style={{ background: "#fff", border: `1px solid ${COLORS.line}`, borderRadius: 6, padding: 16, marginBottom: 20, fontSize: 13.5, color: "#5A5346" }}>
+          Your cart includes items from <strong>{departmentsInCart.join(", ")}</strong>. Each department is
+          verified automatically when you place the order — no need to select one yourself.
         </div>
       )}
 
@@ -492,8 +484,14 @@ function CheckoutView({ cart, onBack, onDone }) {
         ))}
       </div>
 
+      {error && (
+        <div style={{ background: "#FBEAEC", color: COLORS.maroon, fontSize: 13, padding: "10px 12px", borderRadius: 4, marginBottom: 14 }}>
+          {error}
+        </div>
+      )}
+
       <button
-        disabled={status === "verifying" || (claimDiscount && !department)}
+        disabled={status === "verifying"}
         onClick={submit}
         style={{
           width: "100%",
@@ -505,7 +503,6 @@ function CheckoutView({ cart, onBack, onDone }) {
           fontSize: 14.5,
           fontWeight: 700,
           cursor: status === "verifying" ? "default" : "pointer",
-          opacity: claimDiscount && !department ? 0.5 : 1,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -539,22 +536,32 @@ function Row({ label, value }) {
 /* Root app                                                             */
 /* ------------------------------------------------------------------ */
 
-export default function StorefrontApp() {
+export default function StorefrontApp({ token, department }) {
+  const [allProducts, setAllProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [cart, setCart] = useState([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [view, setView] = useState("catalog"); // catalog | detail | checkout
   const [filter, setFilter] = useState("All");
   const [selectedProduct, setSelectedProduct] = useState(null);
 
+  useEffect(() => {
+    fetchProducts(token)
+      .then(setAllProducts)
+      .catch((err) => setLoadError(err.message))
+      .finally(() => setLoading(false));
+  }, [token]);
+
   const openProduct = (product) => {
     setSelectedProduct(product);
     setView("detail");
   };
 
-  const categories = ["All", ...new Set(PRODUCTS.map((p) => p.category))];
+  const categories = ["All", ...new Set(allProducts.map((p) => p.category))];
   const products = useMemo(
-    () => (filter === "All" ? PRODUCTS : PRODUCTS.filter((p) => p.category === filter)),
-    [filter]
+    () => (filter === "All" ? allProducts : allProducts.filter((p) => p.category === filter)),
+    [filter, allProducts]
   );
 
   const addToCart = useCallback((product, qty = 1) => {
@@ -578,7 +585,7 @@ export default function StorefrontApp() {
 
   return (
     <div style={styles.app}>
-      <Header cartCount={cartCount} onCartClick={() => setCartOpen(true)} studentDept="Computer Science" />
+      <Header cartCount={cartCount} onCartClick={() => setCartOpen(true)} studentDept={department} />
 
       {view === "catalog" && (
         <main style={{ padding: "28px 32px", maxWidth: 1080, margin: "0 auto", width: "100%", boxSizing: "border-box" }}>
@@ -591,31 +598,47 @@ export default function StorefrontApp() {
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 8, marginBottom: 22, flexWrap: "wrap" }}>
-            {categories.map((c) => (
-              <button
-                key={c}
-                onClick={() => setFilter(c)}
-                style={{
-                  padding: "6px 14px",
-                  borderRadius: 20,
-                  border: `1px solid ${filter === c ? COLORS.navy : COLORS.line}`,
-                  background: filter === c ? COLORS.navy : "#fff",
-                  color: filter === c ? COLORS.cream : COLORS.ink,
-                  fontSize: 13,
-                  cursor: "pointer",
-                }}
-              >
-                {c}
-              </button>
-            ))}
-          </div>
+          {loading && <div style={{ padding: 40, textAlign: "center", color: "#8A8371" }}>Loading products…</div>}
+          {loadError && (
+            <div style={{ background: "#FBEAEC", color: COLORS.maroon, padding: "12px 14px", borderRadius: 5, marginBottom: 20, fontSize: 13.5 }}>
+              {loadError} — is the backend running on {`localhost:3000`}?
+            </div>
+          )}
+          {!loading && !loadError && allProducts.length === 0 && (
+            <div style={{ padding: 40, textAlign: "center", color: "#8A8371", fontSize: 14 }}>
+              No products yet — a STAFF/ADMIN user needs to add some in the admin panel first.
+            </div>
+          )}
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 16 }}>
-            {products.map((p) => (
-              <ProductCard key={p.id} product={p} onAdd={addToCart} onOpen={openProduct} />
-            ))}
-          </div>
+          {!loading && allProducts.length > 0 && (
+            <>
+              <div style={{ display: "flex", gap: 8, marginBottom: 22, flexWrap: "wrap" }}>
+                {categories.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => setFilter(c)}
+                    style={{
+                      padding: "6px 14px",
+                      borderRadius: 20,
+                      border: `1px solid ${filter === c ? COLORS.navy : COLORS.line}`,
+                      background: filter === c ? COLORS.navy : "#fff",
+                      color: filter === c ? COLORS.cream : COLORS.ink,
+                      fontSize: 13,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 16 }}>
+                {products.map((p) => (
+                  <ProductCard key={p.id} product={p} onAdd={addToCart} onOpen={openProduct} />
+                ))}
+              </div>
+            </>
+          )}
         </main>
       )}
 
@@ -630,6 +653,7 @@ export default function StorefrontApp() {
       {view === "checkout" && (
         <CheckoutView
           cart={cart}
+          token={token}
           onBack={() => {
             setView("catalog");
             setCartOpen(true);

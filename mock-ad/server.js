@@ -18,6 +18,7 @@
 const crypto = require("crypto");
 const express = require("express");
 const jwt = require("jsonwebtoken");
+const cors = require("cors"); // the browser (frontend) calls this directly, unlike mock-educore
 
 const PORT = process.env.MOCK_AD_PORT || 4001;
 const ISSUER = process.env.MOCK_AD_ISSUER || `http://localhost:${PORT}`;
@@ -39,6 +40,7 @@ const ROLE_GROUPS = {
 };
 
 const app = express();
+app.use(cors());
 app.use(express.json());
 
 app.get("/discovery/v2.0/keys", (req, res) => {
