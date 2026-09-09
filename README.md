@@ -160,6 +160,21 @@ node mock-educore/server.js          # listens on :4000
 EDUCORE_BASE_URL=http://localhost:4000 npm run dev
 ```
 
+For a live demo, `MOCK_EDUCORE_MODE=public-api` makes the mock derive its
+verified/not-verified answer from a real call to a public API
+(JSONPlaceholder) instead of an obviously-fake hardcoded list — the network
+call is genuine, though the public API's data has no real connection to
+enrollment (this is a demo aid, not a second real integration; the actual
+EduCore contract is unaffected). Two pairs are pre-checked to behave
+reliably every run:
+```bash
+MOCK_EDUCORE_MODE=public-api node mock-educore/server.js
+```
+| studentId | department | Result |
+|---|---|---|
+| `ad-student-3` | `Business` | enrolled (discount applied) |
+| `ad-student-1` | `Computer Science` | not enrolled (full price) |
+
 ## Other External Integration
 
 **AI-generated product descriptions** — when STAFF/ADMIN create or update a
