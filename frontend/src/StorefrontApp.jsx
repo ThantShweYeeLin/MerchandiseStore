@@ -97,6 +97,7 @@ function Badge({ children, tone = "navy" }) {
     navy: { bg: COLORS.navy, fg: COLORS.cream },
     gold: { bg: COLORS.goldSoft, fg: COLORS.navyDeep },
     maroon: { bg: COLORS.maroon, fg: COLORS.cream },
+    neutral: { bg: "#EFECE6", fg: "#5A5346" },
   };
   const t = tones[tone];
   return (
@@ -196,7 +197,8 @@ function Header({ cartCount, onCartClick, studentDept }) {
   );
 }
 
-function ProductCard({ product, onAdd, onOpen }) {
+function ProductCard({ product, viewerDepartment, onAdd, onOpen }) {
+  const isViewerDepartment = product.department && product.department === viewerDepartment;
   return (
     <div
       style={{
@@ -237,7 +239,13 @@ function ProductCard({ product, onAdd, onOpen }) {
       <div style={{ fontSize: 13, color: "#5A5346", lineHeight: 1.4, flexGrow: 1 }}>
         {product.blurb}
       </div>
-      {product.department && <Badge tone="gold">{product.department} discount eligible</Badge>}
+      {product.department && (
+        isViewerDepartment ? (
+          <Badge tone="gold">✓ {product.department} discount — matches your department</Badge>
+        ) : (
+          <Badge tone="neutral">{product.department} students only — you may not qualify</Badge>
+        )
+      )}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
         <div style={{ ...styles.display, fontSize: 18, fontWeight: 700 }}>฿{product.price}</div>
         <button
@@ -634,7 +642,7 @@ export default function StorefrontApp({ token, department }) {
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 16 }}>
                 {products.map((p) => (
-                  <ProductCard key={p.id} product={p} onAdd={addToCart} onOpen={openProduct} />
+                  <ProductCard key={p.id} product={p} viewerDepartment={department} onAdd={addToCart} onOpen={openProduct} />
                 ))}
               </div>
             </>
