@@ -2,7 +2,10 @@
 
 Headless (API-only) backend for official university merchandise. Staff manage
 the catalog, students browse and order, and department discounts are
-verified in real time against a peer service (EduCore) run by another team.
+verified in real time against an external service before being applied —
+originally designed against a classmate's peer service (EduCore); per
+updated course requirements this is demonstrated against a public API
+instead (see [Peer API Documentation](#peer-api-documentation)).
 
 ## Architecture Overview
 
@@ -116,64 +119,67 @@ takes priority whenever `AZURE_KEY_VAULT_NAME` is set.
 
 ## Peer API Documentation
 
-This project partners with **[classmate/team name — fill in]**, who runs
-**EduCore**, a department-enrollment verification service.
+**Per updated course requirements, connecting to a classmate's real peer API
+is no longer required — a public API demonstrating the same integration
+pattern (real outbound HTTP call, real response, used to drive a real
+business decision) is sufficient.** The project's own architecture is
+otherwise unchanged: the enrollment-check integration is isolated behind
+`src/services/eduCoreClient.js`, so pointing it at a real EduCore later
+(if one ever exists) is a one-file change — see
+[`docs/educore-contract.md`](docs/educore-contract.md) for the full
+draft contract this was designed against.
 
-### What we consume from EduCore
-- **Endpoint**: `GET {EDUCORE_BASE_URL}/enrollment/verify?studentId=&department=`
-- **Auth**: static `x-api-key` header, issued to us by the EduCore team
-  (stored as the `EDUCORE-API-KEY` secret in Key Vault).
+### What we consume: a public API, standing in for a peer department-enrollment service
+- **Endpoint called**: `GET {EDUCORE_BASE_URL}/enrollment/verify?studentId=&department=`
+  — our own `mock-educore/server.js`, run in `MOCK_EDUCORE_MODE=public-api`.
+- **What that server actually does**: derives its verified/not-verified
+  answer from a real call to **JSONPlaceholder** (`GET
+  https://jsonplaceholder.typicode.com/todos/{id}`), a public REST test
+  API — `{studentId}:{department}` is hashed to a todo id, and that todo's
+  `completed` boolean becomes the enrollment result. The public API's data
+  has no real meaning as "enrollment"; what's being demonstrated is a real
+  external network call driving a real order-total calculation, not a
+  hardcoded answer.
+- **Auth**: static `x-api-key` header (stored as the `EDUCORE-API-KEY`
+  secret in Key Vault) — kept even though the current backing service is
+  public, since the real requirement (a server-held key, one-way outbound
+  call) is what's being demonstrated.
 - **When**: on every order placement, once per distinct department claimed
   by items in the order (`src/services/eduCoreClient.js`).
 - **Data used**: a boolean enrollment result, logged in full in
   `PeerVerificationLog` for grading/audit purposes.
-- **Failure handling**: if EduCore is unreachable or errors, we fail closed
-  — no discount is applied, the order still completes at full price.
+- **Failure handling**: if the call is unreachable or errors, we fail
+  closed — no discount is applied, the order still completes at full price.
+- **Two pairs are pre-checked against JSONPlaceholder's static data so a
+  demo behaves identically every run:**
 
-### What we expose for EduCore
+  | studentId | department | Result |
+  |---|---|---|
+  | `ad-student-3` | `Business` | enrolled (discount applied) |
+  | `ad-student-1` | `Computer Science` | not enrolled (full price) |
+
+  ```bash
+  MOCK_EDUCORE_MODE=public-api node mock-educore/server.js   # :4000
+  EDUCORE_BASE_URL=http://localhost:4000 npm run dev
+  ```
+
+### What we expose, for a peer service to consume from us
 - **Endpoint**: `GET /store/peer/students/:studentId/orders`
   (`src/routes/peer.js`)
-- **Auth**: static `x-api-key` header we generate and issue exclusively to
-  EduCore (stored as the `EDUCORE-INBOUND-KEY` secret in Key Vault; rotatable
-  by `ADMIN`, rotations recorded in `AuditLog`).
+- **Auth**: static `x-api-key` header we generate and issue to whoever
+  consumes it (stored as the `EDUCORE-INBOUND-KEY` secret in Key Vault;
+  rotatable by `ADMIN`, rotations recorded in `AuditLog`).
 - **Data returned**: order count, total spend, and discount usage broken
   down by department for the given student — no payment details.
-- **Purpose**: lets EduCore fold our discount-usage data into their own
-  department-enrollment reporting without direct database access.
+- **Purpose**: demonstrates the "expose" half of a peer integration —
+  a partner service could fold this store's discount-usage data into their
+  own reporting without direct database access.
 
-### Everything above is an assumption until EduCore confirms otherwise
-The request/response shape, the student identifier (`adObjectId` vs. a
-university student ID number), and department naming (`"Computer Science"`
-vs. a short code) are all this project's best guess, not a confirmed
-contract — agree these with the EduCore team before treating them as fixed.
-See [`docs/educore-contract.md`](docs/educore-contract.md) for the full
-draft contract and open questions to resolve with them.
-
-### Testing this integration before EduCore is reachable
-`mock-educore/server.js` is a tiny local stand-in matching the *current*
-assumed contract exactly (`GET /enrollment/verify?studentId=&department=`,
-returns `{ verified: boolean }`). Update it alongside `eduCoreClient.js` if
-the real contract ends up different.
-```bash
-node mock-educore/server.js          # listens on :4000
-# then point the real app at it:
-EDUCORE_BASE_URL=http://localhost:4000 npm run dev
-```
-
-For a live demo, `MOCK_EDUCORE_MODE=public-api` makes the mock derive its
-verified/not-verified answer from a real call to a public API
-(JSONPlaceholder) instead of an obviously-fake hardcoded list — the network
-call is genuine, though the public API's data has no real connection to
-enrollment (this is a demo aid, not a second real integration; the actual
-EduCore contract is unaffected). Two pairs are pre-checked to behave
-reliably every run:
-```bash
-MOCK_EDUCORE_MODE=public-api node mock-educore/server.js
-```
-| studentId | department | Result |
-|---|---|---|
-| `ad-student-3` | `Business` | enrolled (discount applied) |
-| `ad-student-1` | `Computer Science` | not enrolled (full price) |
+### If a real classmate's EduCore ever becomes available
+Swap `EDUCORE_BASE_URL` to point at it and confirm the contract in
+`docs/educore-contract.md` matches theirs (student identifier, department
+naming, and request shape are documented there as open questions) —
+`eduCoreClient.js` is the only file that would need to change.
 
 ## Other External Integration
 
