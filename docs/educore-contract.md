@@ -6,6 +6,14 @@ what this project's code currently assumes (`src/services/eduCoreClient.js`,
 file and the corresponding code together once EduCore confirms their actual
 API.
 
+**Note**: per updated course requirements, actually connecting to a
+classmate's real peer API is no longer required for grading — see the
+[Peer API Documentation](../README.md#peer-api-documentation) section of
+the README for how this is demonstrated against a public API instead. This
+contract stays as the design target in case a real EduCore ever becomes
+available; `eduCoreClient.js` is written so swapping to one only touches
+that one file.
+
 ## Open questions to resolve with the EduCore team
 
 1. **Student identifier** — we currently send the AD Object ID (a GUID, from
