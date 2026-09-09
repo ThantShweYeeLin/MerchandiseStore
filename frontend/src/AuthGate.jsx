@@ -1,35 +1,57 @@
 import React, { useState } from "react";
 import { ShieldCheck, Loader2, LogOut, GraduationCap, Briefcase } from "lucide-react";
+import { MOCK_AD_BASE_URL } from "./config";
 
 /* ------------------------------------------------------------------ */
-/* Auth layer — stand-in for real MSAL/OIDC.                           */
+/* Auth layer — real call to mock-ad/server.js, standing in for real   */
+/* MSAL/OIDC against university AD.                                    */
 /*                                                                      */
-/* In production this whole block gets replaced by @azure/msal-browser:*/
+/* In production this whole function gets replaced by @azure/msal-browser:*/
 /*   import { PublicClientApplication } from "@azure/msal-browser";    */
 /*   const msalInstance = new PublicClientApplication(msalConfig);     */
 /*   await msalInstance.loginPopup({ scopes: ["User.Read"] });         */
 /*                                                                      */
-/* The backend never sees a password — it only ever verifies the JWT   */
-/* access token MSAL hands back, against AD's JWKS endpoint.           */
+/* Either way, the backend never sees a password — it only ever        */
+/* verifies the JWT access token handed back here, against AD's JWKS   */
+/* endpoint (mock-ad/server.js's /discovery/v2.0/keys locally).        */
 /* ------------------------------------------------------------------ */
 
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-
-// Stands in for msalInstance.loginPopup(...) + the token AD hands back.
-// In this mock version, the "AD claims" come from whatever the person
-// typed into the sign-in form instead of a hardcoded value.
+// Calls mock-ad/server.js's /mock-login for a real RS256 JWT accepted by
+// the real backend's requireAuth middleware. The email typed in doubles as
+// the AD object id, so repeat logins with the same email map to the same
+// backend User row.
 async function signInWithUniversitySSO(formInput) {
-  await wait(900);
+  const response = await fetch(`${MOCK_AD_BASE_URL}/mock-login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      role: formInput.role,
+      adObjectId: formInput.email,
+      email: formInput.email,
+      name: formInput.displayName,
+      department: formInput.department,
+    }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error || "Sign-in failed — is mock-ad/server.js running on :4001?");
+  }
+  const { token } = await response.json();
   return {
     displayName: formInput.displayName,
     email: formInput.email,
     department: formInput.department,
     role: formInput.role,
-    adObjectId: `mock-${Math.random().toString(36).slice(2, 10)}`,
+    adObjectId: formInput.email,
+    token,
   };
 }
 
-const DEPARTMENTS = ["Computer Science", "Engineering", "Business Administration", "Nursing", "Architecture"];
+// Must match real Category names in the backend exactly — department here
+// becomes the string checked against EduCore (or the public-API demo
+// mode), so it's free text the presenter types, not a fixed enum in
+// production. Listed here as a picker purely for demo convenience.
+const DEPARTMENTS = ["Computer Science", "Business", "Engineering", "Nursing", "Architecture"];
 const ROLES = ["STUDENT", "STAFF", "ADMIN"];
 
 /* ------------------------------------------------------------------ */
@@ -55,7 +77,7 @@ const styles = {
 /* Screens                                                              */
 /* ------------------------------------------------------------------ */
 
-function SignInScreen({ onSignIn, signingIn }) {
+function SignInScreen({ onSignIn, signingIn, error }) {
   const [form, setForm] = useState({
     displayName: "",
     email: "",
@@ -114,6 +136,18 @@ function SignInScreen({ onSignIn, signingIn }) {
           <div style={{ fontSize: 13, color: COLORS.muted }}>
             Sign in or create a test account to continue.
           </div>
+        </div>
+
+        {error && (
+          <div style={{ background: "#FBEAEC", color: COLORS.redDeep, fontSize: 12.5, padding: "10px 12px", borderRadius: 5, marginBottom: 16 }}>
+            {error}
+          </div>
+        )}
+
+        <div style={{ background: COLORS.redSoft, color: COLORS.redDeep, fontSize: 11.5, padding: "9px 11px", borderRadius: 5, marginBottom: 16, lineHeight: 1.5 }}>
+          <strong>For a discount demo</strong>, sign in as STUDENT with email{" "}
+          <code>ad-student-3</code> / department Business (discount applies), or{" "}
+          <code>ad-student-1</code> / department Computer Science (denied).
         </div>
 
         <FormField label="Full name">
@@ -333,16 +367,23 @@ function navButton(primary) {
 export default function AuthGate({ onEnterStorefront, onEnterAdmin }) {
   const [user, setUser] = useState(null);
   const [signingIn, setSigningIn] = useState(false);
+  const [error, setError] = useState(null);
 
   const handleSignIn = async (formInput) => {
     setSigningIn(true);
-    const claims = await signInWithUniversitySSO(formInput);
-    setUser(claims);
-    setSigningIn(false);
+    setError(null);
+    try {
+      const claims = await signInWithUniversitySSO(formInput);
+      setUser(claims);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSigningIn(false);
+    }
   };
 
   if (!user) {
-    return <SignInScreen onSignIn={handleSignIn} signingIn={signingIn} />;
+    return <SignInScreen onSignIn={handleSignIn} signingIn={signingIn} error={error} />;
   }
 
   return (

@@ -70,8 +70,8 @@ export default function App() {
       </div>
 
       <div style={{ flexGrow: 1 }}>
-        {page === "storefront" && <StorefrontApp />}
-        {page === "admin" && <AdminCatalog />}
+        {page === "storefront" && <StorefrontApp token={user.token} department={user.department} />}
+        {page === "admin" && <AdminCatalog token={user.token} />}
       </div>
     </div>
   );
