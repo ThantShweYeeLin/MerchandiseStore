@@ -33,21 +33,28 @@ container — no jest, no mocked Prisma, no mocked HTTP.
 | Step | Action | Result |
 |---|---|---|
 | 1 | Staff login via mock AD | Valid JWT issued and accepted by `requireAuth` |
-| 2 | `POST /categories` (Computer Science, Business) as STAFF | 201 both |
-| 3 | `POST /products` (CS Hoodie $50, Business Jacket $80) as STAFF | 201 both; AI call made with placeholder key → `description: null`, product still created (graceful fallback proven) |
-| 4 | Student `ad-student-3` (dept: Business) logs in, orders the Business Jacket | 201; real call to JSONPlaceholder (`todo #56`, `completed: true`) → `verified: true`; `totalAmount: 68` (15% off $80); `discountApplied: true` |
-| 5 | Student `ad-student-1` (dept: Computer Science) logs in, orders the CS Hoodie | 201; real call to JSONPlaceholder (`todo #124`, `completed: false`) → `verified: false`; `totalAmount: 50` (full price); `discountApplied: false` |
-| 6 | Admin login, `GET /admin/audit-log` | Returns all 6 actions from steps 2–5 in order — full trail present |
-| 7 | `GET /peer/students/:id/orders` with correct `x-api-key` | 200, accurate summary |
-| 8 | Same endpoint, wrong `x-api-key` | 401 |
-| 9 | Same endpoint, unknown student | 404 |
-| 10 | `GET /health` with Postgres running | `200 {"status":"ok","db":"ok",...}` |
-| 11 | `GET /health` with Postgres stopped | `503 {"status":"error","db":"unreachable",...}` |
+| 2 | `POST /categories` (Computer Science, Business, Engineering) as STAFF | 201 all |
+| 3 | `POST /products` (CS Jacket, Business Tote, Engineering Mug) as STAFF | 201 all; AI call made with placeholder key → `description: null`, product still created (graceful fallback proven) |
+| 4 | Student `ad-student-3` (roster dept: Business) orders the Business Tote | 201; roster match → `verified: true`; 15% off, `discountApplied: true` |
+| 5 | Student `ad-student-1` (roster dept: Computer Science) orders the CS Jacket | 201; roster match → `verified: true`; 15% off, `discountApplied: true` |
+| 6 | **Same student (`ad-student-1`) orders the CS Jacket + Business Tote + Engineering Mug in one order** | 201; `peerVerificationLogs`: `Computer Science: true`, `Business: false`, `Engineering: false` — only the CS item discounted, proving the check is per-department per-student, not blanket |
+| 7 | An unregistered studentId orders a Business item, claiming department "Business" | `verified: false` — no roster entry means no discount, deterministically (not a coin flip) |
+| 8 | Admin login, `GET /admin/audit-log` | Full trail of every category/product/order action present |
+| 9 | `GET /peer/students/:id/orders` with correct `x-api-key` | 200, accurate summary |
+| 10 | Same endpoint, wrong `x-api-key` | 401 |
+| 11 | Same endpoint, unknown student | 404 |
+| 12 | `GET /health` with Postgres running / stopped | `200 {"db":"ok"}` / `503 {"db":"unreachable"}` |
 
-This demonstrates both discount outcomes (enrolled/denied) driven by a real
-external network call, not a hardcoded answer — the same pattern a real
-peer-service integration would use, per the updated requirement that a
-public API is sufficient to demonstrate this capability.
+**Bug found and fixed during this testing**: the first version of the
+public-API demo mode derived verified/not-verified from a hash of
+`(studentId, department)` fed into a public API response — which meant the
+same student could randomly "pass" for departments they have nothing to do
+with (e.g. a Computer Science student getting a Business discount purely by
+hash luck), independent of any real enrollment. Fixed by adding a roster
+mapping each demo student to their one real department; the public API call
+still happens and is logged (satisfying "demonstrate a real external call"),
+but no longer controls who gets a discount. Step 6 above is the regression
+test for this — verified live after the fix.
 
 ## Not yet tested / not currently applicable
 

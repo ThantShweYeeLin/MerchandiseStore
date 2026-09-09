@@ -132,14 +132,19 @@ draft contract this was designed against.
 ### What we consume: a public API, standing in for a peer department-enrollment service
 - **Endpoint called**: `GET {EDUCORE_BASE_URL}/enrollment/verify?studentId=&department=`
   — our own `mock-educore/server.js`, run in `MOCK_EDUCORE_MODE=public-api`.
-- **What that server actually does**: derives its verified/not-verified
-  answer from a real call to **JSONPlaceholder** (`GET
-  https://jsonplaceholder.typicode.com/todos/{id}`), a public REST test
-  API — `{studentId}:{department}` is hashed to a todo id, and that todo's
-  `completed` boolean becomes the enrollment result. The public API's data
-  has no real meaning as "enrollment"; what's being demonstrated is a real
-  external network call driving a real order-total calculation, not a
-  hardcoded answer.
+- **What that server actually does**: makes a real call to **JSONPlaceholder**
+  (`GET https://jsonplaceholder.typicode.com/todos/{id}`), a public REST test
+  API, and logs the response — demonstrating a genuine external network call,
+  per the course's updated requirement that a public API is sufficient here.
+  The actual verified/not-verified decision does **not** come from that
+  response, though: the public API has no real knowledge of university
+  enrollment, so doing that would make verification a coin flip per
+  `(student, department)` pair — which was a real bug caught during testing,
+  where a Computer Science student could randomly "pass" for Business or
+  Engineering too. The decision instead comes from a small roster in
+  `mock-educore/server.js` mapping each demo student to their one real
+  department, so a student is only ever discounted on their own department,
+  no matter how many other departments' items are in the same order.
 - **Auth**: static `x-api-key` header (stored as the `EDUCORE-API-KEY`
   secret in Key Vault) — kept even though the current backing service is
   public, since the real requirement (a server-held key, one-way outbound
@@ -150,13 +155,18 @@ draft contract this was designed against.
   `PeerVerificationLog` for grading/audit purposes.
 - **Failure handling**: if the call is unreachable or errors, we fail
   closed — no discount is applied, the order still completes at full price.
-- **Two pairs are pre-checked against JSONPlaceholder's static data so a
-  demo behaves identically every run:**
+- **Demo roster** (`mock-educore/server.js`'s `ROSTER`) — any studentId not
+  listed has no known enrollment anywhere, so it's always denied (no random
+  luck for arbitrary test logins):
 
-  | studentId | department | Result |
+  | studentId | real department | Result |
   |---|---|---|
-  | `ad-student-3` | `Business` | enrolled (discount applied) |
-  | `ad-student-1` | `Computer Science` | not enrolled (full price) |
+  | `ad-student-3` | Business | verified only when ordering a **Business** item |
+  | `ad-student-1` | Computer Science | verified only when ordering a **Computer Science** item |
+
+  Try `ad-student-1` ordering a Computer Science item *and* a Business item
+  in the same order — only the CS item gets discounted, proving the check
+  is per-department and per-student, not blanket.
 
   ```bash
   MOCK_EDUCORE_MODE=public-api node mock-educore/server.js   # :4000
