@@ -191,16 +191,34 @@ function ProductFormModal({ open, form, setForm, categories, onAddCategory, onCl
 
   const update = (field) => (e) => setForm({ ...form, [field]: e.target.value });
 
-  const handleCategoryChange = async (e) => {
+  const [addingCategory, setAddingCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [creatingCategory, setCreatingCategory] = useState(false);
+  const [newCategoryError, setNewCategoryError] = useState(null);
+
+  const handleCategoryChange = (e) => {
     if (e.target.value === "__new__") {
-      const name = window.prompt("New category / department name (e.g. \"Business\")");
-      if (name && name.trim()) {
-        const category = await onAddCategory(name.trim());
-        setForm((f) => ({ ...f, categoryId: category.id }));
-      }
+      setAddingCategory(true);
+      setNewCategoryError(null);
       return;
     }
     setForm({ ...form, categoryId: e.target.value });
+  };
+
+  const handleCreateCategory = async () => {
+    if (!newCategoryName.trim()) return;
+    setCreatingCategory(true);
+    setNewCategoryError(null);
+    try {
+      const category = await onAddCategory(newCategoryName.trim());
+      setForm((f) => ({ ...f, categoryId: category.id }));
+      setAddingCategory(false);
+      setNewCategoryName("");
+    } catch (err) {
+      setNewCategoryError(err.message);
+    } finally {
+      setCreatingCategory(false);
+    }
   };
 
   return (
@@ -234,6 +252,47 @@ function ProductFormModal({ open, form, setForm, categories, onAddCategory, onCl
             <option value="__new__">+ New category…</option>
           </select>
         </Field>
+
+        {addingCategory && (
+          <div style={{ display: "flex", gap: 8, marginTop: -8, marginBottom: 14 }}>
+            <input
+              autoFocus
+              value={newCategoryName}
+              onChange={(e) => setNewCategoryName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleCreateCategory()}
+              placeholder='e.g. "Business"'
+              style={{ ...inputStyle, flexGrow: 1 }}
+            />
+            <button
+              onClick={handleCreateCategory}
+              disabled={creatingCategory || !newCategoryName.trim()}
+              style={{
+                background: COLORS.red,
+                color: COLORS.white,
+                border: "none",
+                borderRadius: 5,
+                padding: "0 16px",
+                fontSize: 13.5,
+                fontWeight: 700,
+                cursor: creatingCategory || !newCategoryName.trim() ? "default" : "pointer",
+                opacity: !newCategoryName.trim() ? 0.5 : 1,
+              }}
+            >
+              {creatingCategory ? "…" : "Create"}
+            </button>
+            <button
+              onClick={() => { setAddingCategory(false); setNewCategoryName(""); setNewCategoryError(null); }}
+              style={{ background: "none", border: "none", color: COLORS.muted, cursor: "pointer", padding: "0 6px" }}
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
+        {newCategoryError && (
+          <div style={{ background: "#FBEAEC", color: COLORS.redDeep, fontSize: 12, padding: "8px 10px", borderRadius: 5, marginTop: -8, marginBottom: 14 }}>
+            {newCategoryError}
+          </div>
+        )}
 
         <div style={{ display: "flex", gap: 12 }}>
           <Field label="Price (฿)" grow>
