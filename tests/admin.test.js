@@ -3,7 +3,7 @@ const express = require("express");
 
 const mockPrismaClient = {
   auditLog: { findMany: jest.fn(), create: jest.fn() },
-  user: { findUnique: jest.fn(), update: jest.fn() },
+  user: { findMany: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
 };
 
 jest.mock("@prisma/client", () => ({
@@ -48,6 +48,23 @@ describe("GET /admin/audit-log", () => {
 
   it("rejects STAFF from viewing the audit trail", async () => {
     const res = await request(buildApp()).get("/admin/audit-log").set("x-test-role", "STAFF");
+
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("GET /admin/users", () => {
+  it("allows ADMIN to list users", async () => {
+    mockPrismaClient.user.findMany.mockResolvedValue([{ id: "u1", role: "STUDENT" }]);
+
+    const res = await request(buildApp()).get("/admin/users").set("x-test-role", "ADMIN");
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+  });
+
+  it("rejects non-ADMIN callers", async () => {
+    const res = await request(buildApp()).get("/admin/users").set("x-test-role", "STAFF");
 
     expect(res.status).toBe(403);
   });
