@@ -144,12 +144,6 @@ function SignInScreen({ onSignIn, signingIn, error }) {
           </div>
         )}
 
-        <div style={{ background: COLORS.redSoft, color: COLORS.redDeep, fontSize: 11.5, padding: "9px 11px", borderRadius: 5, marginBottom: 16, lineHeight: 1.5 }}>
-          <strong>For a discount demo</strong>, sign in as STUDENT with email{" "}
-          <code>ad-student-3</code> / department Business (discount applies), or{" "}
-          <code>ad-student-1</code> / department Computer Science (denied).
-        </div>
-
         <FormField label="Full name">
           <input
             value={form.displayName}
@@ -218,11 +212,6 @@ function SignInScreen({ onSignIn, signingIn, error }) {
             </>
           )}
         </button>
-
-        <div style={{ fontSize: 11.5, color: COLORS.muted, marginTop: 14, textAlign: "center", lineHeight: 1.5 }}>
-          Role and department are chosen here for testing only — in production
-          these come from your real university AD account, not a form field.
-        </div>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     </div>
