@@ -48,13 +48,14 @@ function requireAuth(req, res, next) {
           update: {
             email: decoded.preferred_username || decoded.email,
             displayName: decoded.name,
+            ...(isConfiguredAdmin(decoded) ? { role: "ADMIN" } : {}),
           },
           create: {
             adObjectId: decoded.oid,
             email: decoded.preferred_username || decoded.email,
             displayName: decoded.name,
             department: decoded.department || null,
-            role: mapAdGroupsToRole(decoded.roles || decoded.groups || []),
+            role: mapAdGroupsToRole(decoded),
           },
         });
 
@@ -71,10 +72,21 @@ function requireAuth(req, res, next) {
  * Maps AD security group / app role claims onto our internal Role enum.
  * Adjust the group names to match what's configured in the university AD app registration.
  */
-function mapAdGroupsToRole(groupsOrRoles) {
+function mapAdGroupsToRole(decoded) {
+  if (isConfiguredAdmin(decoded)) return "ADMIN";
+  const groupsOrRoles = decoded.roles || decoded.groups || [];
   if (groupsOrRoles.includes("MerchStoreAdmin")) return "ADMIN";
   if (groupsOrRoles.includes("MerchStoreStaff")) return "STAFF";
   return "STUDENT";
+}
+
+function isConfiguredAdmin(decoded) {
+  const email = (decoded.preferred_username || decoded.email || "").toLowerCase();
+  const configuredAdmins = (process.env.AD_ADMIN_EMAILS || "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  return configuredAdmins.includes(email);
 }
 
 module.exports = { requireAuth };
