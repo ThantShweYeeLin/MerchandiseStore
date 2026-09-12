@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { PublicClientApplication } from "@azure/msal-browser";
 import {
   ShieldCheck,
@@ -20,7 +20,9 @@ const msalInstance = new PublicClientApplication({
   },
 });
 
-const msalReady = msalInstance.initialize();
+const msalReady = msalInstance.initialize().then(() =>
+  msalInstance.handleRedirectPromise(),
+);
 
 async function signInWithEntra() {
   if (!ENTRA_CLIENT_ID || !ENTRA_API_SCOPE) {
@@ -28,29 +30,45 @@ async function signInWithEntra() {
       "Entra ID is not configured. Set the VITE_ENTRA_CLIENT_ID and VITE_ENTRA_API_SCOPE values.",
     );
   }
+  if (!isGuid(ENTRA_CLIENT_ID)) {
+    throw new Error(
+      "VITE_ENTRA_CLIENT_ID must be the frontend app registration's Application (client) ID GUID.",
+    );
+  }
+  if (!isGuid(import.meta.env.VITE_ENTRA_TENANT_ID || "")) {
+    throw new Error(
+      "VITE_ENTRA_TENANT_ID must be the Microsoft Entra Directory (tenant) ID GUID.",
+    );
+  }
 
   await msalReady;
-  const response = await msalInstance.loginPopup({ scopes: [ENTRA_API_SCOPE] });
-  const claims = response.account.idTokenClaims || {};
+  await msalInstance.loginRedirect({
+    scopes: ["openid", "profile", "email", ENTRA_API_SCOPE],
+  });
+}
+
+function userFromAuthResponse(response) {
+  if (!response?.account || !response.accessToken) return null;
+  const account = response.account;
+  const claims = account.idTokenClaims || {};
   const groupsOrRoles = [...(claims.roles || []), ...(claims.groups || [])];
 
   return {
     displayName:
-      response.account.name ||
-      claims.name ||
-      claims.preferred_username ||
-      "Entra user",
-    email:
-      response.account.username ||
-      claims.preferred_username ||
-      claims.email ||
-      "",
+      account.name || claims.name || claims.preferred_username || "Entra user",
+    email: account.username || claims.preferred_username || claims.email || "",
     department: claims.department || "General",
     role: mapEntraRole(groupsOrRoles),
-    adObjectId: claims.oid || response.account.localAccountId,
+    adObjectId: claims.oid || account.localAccountId,
     token: response.accessToken,
-    account: response.account,
+    account,
   };
+}
+
+function isGuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value,
+  );
 }
 
 function mapEntraRole(groupsOrRoles) {
@@ -351,6 +369,15 @@ export default function AuthGate({ onEnterStorefront, onEnterAdmin }) {
   const [signingIn, setSigningIn] = useState(false);
   const [error, setError] = useState(null);
 
+  useEffect(() => {
+    msalReady
+      .then((response) => {
+        const signedInUser = userFromAuthResponse(response);
+        if (signedInUser) setUser(signedInUser);
+      })
+      .catch((err) => setError(err.message));
+  }, []);
+
   const handleSignIn = async () => {
     setSigningIn(true);
     setError(null);
@@ -379,8 +406,7 @@ export default function AuthGate({ onEnterStorefront, onEnterAdmin }) {
       user={user}
       onSignOut={async () => {
         await msalReady;
-        await msalInstance.logoutPopup({ account: user.account });
-        setUser(null);
+        await msalInstance.logoutRedirect({ account: user.account });
       }}
       onEnterStorefront={() => onEnterStorefront?.(user)}
       onEnterAdmin={() => onEnterAdmin?.(user)}
