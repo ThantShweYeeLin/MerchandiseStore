@@ -20,9 +20,9 @@ const msalInstance = new PublicClientApplication({
   },
 });
 
-const msalReady = msalInstance.initialize().then(() =>
-  msalInstance.handleRedirectPromise(),
-);
+const msalReady = msalInstance
+  .initialize()
+  .then(() => msalInstance.handleRedirectPromise());
 
 async function signInWithEntra() {
   if (!ENTRA_CLIENT_ID || !ENTRA_API_SCOPE) {
