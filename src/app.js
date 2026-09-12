@@ -9,6 +9,7 @@ const productsRouter = require("./routes/products");
 const ordersRouter = require("./routes/orders");
 const peerRouter = require("./routes/peer");
 const adminRouter = require("./routes/admin");
+const aiRouter = require("./routes/ai");
 
 function createApp() {
   const app = express();
@@ -22,7 +23,12 @@ function createApp() {
   // Actually checks DB connectivity — a 200 here means the app can serve
   // real requests, not just that the Node process is alive.
   app.get("/health", async (req, res) => {
-    const body = { status: "ok", service: "merchandise-store", timestamp: new Date().toISOString() };
+    const body = {
+      status: "ok",
+      service: "merchandise-store",
+      timestamp: new Date().toISOString(),
+    };
+
     try {
       await prisma.$queryRaw`SELECT 1`;
       body.db = "ok";
@@ -34,17 +40,22 @@ function createApp() {
     }
   });
 
-  // All routes below are served under /store by Nginx (see nginx/merch-store.conf)
+  // All routes below are served under /store by Nginx
+  // (see nginx/merch-store.conf)
   app.use("/categories", categoriesRouter);
   app.use("/products", productsRouter);
   app.use("/orders", ordersRouter);
   app.use("/peer", peerRouter); // exposed for EduCore to consume
   app.use("/admin", adminRouter);
+  app.use("/ai", aiRouter);
 
   // Central error handler
   app.use((err, req, res, next) => {
     console.error(err);
-    res.status(err.status || 500).json({ error: err.message || "Internal server error" });
+
+    res.status(err.status || 500).json({
+      error: err.message || "Internal server error",
+    });
   });
 
   return app;

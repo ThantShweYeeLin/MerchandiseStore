@@ -15,6 +15,7 @@
   "dependencies": {
     "@azure/identity": "^4.4.1",
     "@azure/keyvault-secrets": "^4.9.0",
+    "@google/genai": "^2.22.0",
     "@prisma/client": "^5.20.0",
     "axios": "^1.7.7",
     "cors": "^2.8.5",
@@ -27,8 +28,8 @@
   },
   "devDependencies": {
     "jest": "^29.7.0",
-    "supertest": "^7.0.0",
     "nodemon": "^3.1.7",
-    "prisma": "^5.20.0"
+    "prisma": "^5.20.0",
+    "supertest": "^7.0.0"
   }
 }
