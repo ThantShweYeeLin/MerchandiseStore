@@ -34,17 +34,39 @@ Nginx Reverse Proxy (TLS via Let's Encrypt) — class VPS
 - **Deployment**: Docker Compose behind Nginx, path-routed at `/store` so it
   coexists with the existing WordPress and Lab API on the same VPS.
 
+### Entra ID sign-in and sign-up
+
+The frontend uses `@azure/msal-browser` and requests an access token for the
+store API. Set these Vite variables in `frontend/.env`:
+
+```bash
+VITE_API_BASE_URL=http://localhost:3000
+VITE_ENTRA_CLIENT_ID=<frontend-app-registration-client-id>
+VITE_ENTRA_TENANT_ID=<tenant-id>
+VITE_ENTRA_AUTHORITY=https://login.microsoftonline.com/<tenant-id>
+VITE_ENTRA_API_SCOPE=api://<api-app-registration-client-id>/access_as_user
+```
+
+Set the backend `AD_CLIENT_ID` to the API app registration client ID, not the
+frontend client ID. Register the frontend origin as a SPA redirect URI in
+Entra ID and expose the `access_as_user` delegated scope on the API app.
+The Microsoft account creation option is controlled by the Entra tenant or
+External ID user flow; the store never collects or handles passwords.
+
 ## Setup
 
 ### Prerequisites
+
 - Node.js 20+
 - Docker & Docker Compose (for deployment)
 - Access to the class Azure Key Vault, and an AD app registration for
   OIDC/MSAL login
 
 ### Local development (team — no Azure Key Vault access needed)
+
 Every teammate can run this without any Azure/AD credentials. `.env` is
 gitignored, so copy it fresh and keep your own values.
+
 ```bash
 cp .env.example .env         # defaults work as-is; AZURE_KEY_VAULT_NAME stays blank
 docker compose up -d db      # starts local Postgres only
@@ -52,6 +74,7 @@ npm install
 npx prisma migrate dev
 npm run dev                  # runs the API on the host, hot-reload via nodemon
 ```
+
 With `AZURE_KEY_VAULT_NAME` left blank and `ALLOW_LOCAL_DEV_SECRETS=true` set
 (both already in `.env.example`), `src/config/keyvault.js` reads
 `DATABASE_URL`, `JWT_SECRET`, `AI_API_KEY`, `EDUCORE_API_KEY`, and
@@ -62,16 +85,19 @@ instead of silently falling back to leftover/weak env secrets — production's
 env file should never set it.
 
 To instead run the whole stack (API + Postgres) fully containerized:
+
 ```bash
 docker compose up --build
 ```
 
 ### Full end-to-end testing without real AD or EduCore access
+
 `POST /products` and `POST /orders` require a real AD-issued JWT, and order
 placement calls EduCore — neither is available outside the university's
 actual AD/EduCore. `mock-ad/server.js` and `mock-educore/server.js` stand in
 for both, so the entire flow (staff login → create product → student login →
 place order → discount) can be run live via curl/Postman, not just jest:
+
 ```bash
 node mock-ad/server.js       # :4001 — fake AD/JWKS + token minting
 node mock-educore/server.js  # :4000 — fake EduCore enrollment check
@@ -86,16 +112,19 @@ curl -X POST http://localhost:4001/mock-login -H "Content-Type: application/json
   -d '{"role":"STAFF","adObjectId":"ad-staff-1","email":"staff@example.edu"}'
 # -> { "token": "..." }, use as: -H "Authorization: Bearer <token>"
 ```
+
 Both mocks are dev-only tooling, never used in production (real AD/EduCore
 are always used there instead).
 
 ### Local development against the real Key Vault (optional)
+
 If you do have access to a dev Key Vault, set `AZURE_KEY_VAULT_NAME` (and the
 `AZURE_CLIENT_ID`/`AZURE_TENANT_ID`/`AZURE_CLIENT_SECRET` app registration
 values) in `.env` instead, and leave the plain secret vars blank — Key Vault
 takes priority whenever `AZURE_KEY_VAULT_NAME` is set.
 
 ### Production deployment (VPS)
+
 1. Add the Nginx location block in `nginx/merch-store.conf` to the existing
    server block for the class domain (do not modify the `/content` or `/api`
    blocks).
@@ -130,6 +159,7 @@ otherwise unchanged: the enrollment-check integration is isolated behind
 draft contract this was designed against.
 
 ### What we consume: a public API, standing in for a peer department-enrollment service
+
 - **Endpoint called**: `GET {EDUCORE_BASE_URL}/enrollment/verify?studentId=&department=`
   — our own `mock-educore/server.js`, run in `MOCK_EDUCORE_MODE=public-api`.
 - **What that server actually does**: makes a real call to **JSONPlaceholder**
@@ -159,12 +189,12 @@ draft contract this was designed against.
   listed has no known enrollment anywhere, so it's always denied (no random
   luck for arbitrary test logins):
 
-  | studentId | real department | Result |
-  |---|---|---|
-  | `ad-student-3` | Business | verified only when ordering a **Business** item |
+  | studentId      | real department  | Result                                                  |
+  | -------------- | ---------------- | ------------------------------------------------------- |
+  | `ad-student-3` | Business         | verified only when ordering a **Business** item         |
   | `ad-student-1` | Computer Science | verified only when ordering a **Computer Science** item |
 
-  Try `ad-student-1` ordering a Computer Science item *and* a Business item
+  Try `ad-student-1` ordering a Computer Science item _and_ a Business item
   in the same order — only the CS item gets discounted, proving the check
   is per-department and per-student, not blanket.
 
@@ -174,6 +204,7 @@ draft contract this was designed against.
   ```
 
 ### What we expose, for a peer service to consume from us
+
 - **Endpoint**: `GET /store/peer/students/:studentId/orders`
   (`src/routes/peer.js`)
 - **Auth**: static `x-api-key` header we generate and issue to whoever
@@ -186,6 +217,7 @@ draft contract this was designed against.
   own reporting without direct database access.
 
 ### If a real classmate's EduCore ever becomes available
+
 Swap `EDUCORE_BASE_URL` to point at it and confirm the contract in
 `docs/educore-contract.md` matches theirs (student identifier, department
 naming, and request shape are documented there as open questions) —
@@ -200,6 +232,7 @@ straight onto the `Product` record. `AI-API-KEY` is a Gemini API key from
 [Google AI Studio](https://aistudio.google.com/apikey) (free tier).
 
 ## Project Structure
+
 ```
 prisma/schema.prisma      Database schema (User, Product, Order, PeerVerificationLog, AuditLog, ...)
 src/app.js                 Express app assembly, route mounting
@@ -216,8 +249,9 @@ deploy.sh                    One-command deploy script
 ```
 
 ## Team
-| Name | ID |
-|---|---|
-| Aye Myat Myat Mon | 6611944 |
-| Phyo Yadanar Min | 6611946 |
+
+| Name               | ID      |
+| ------------------ | ------- |
+| Aye Myat Myat Mon  | 6611944 |
+| Phyo Yadanar Min   | 6611946 |
 | Thant Shwe Yee Lin | 6632067 |

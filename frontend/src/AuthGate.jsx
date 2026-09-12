@@ -1,58 +1,63 @@
 import React, { useState } from "react";
-import { ShieldCheck, Loader2, LogOut, GraduationCap, Briefcase } from "lucide-react";
-import { MOCK_AD_BASE_URL } from "./config";
+import { PublicClientApplication } from "@azure/msal-browser";
+import {
+  ShieldCheck,
+  Loader2,
+  LogOut,
+  GraduationCap,
+  Briefcase,
+} from "lucide-react";
+import { ENTRA_API_SCOPE, ENTRA_AUTHORITY, ENTRA_CLIENT_ID } from "./config";
 
-/* ------------------------------------------------------------------ */
-/* Auth layer — real call to mock-ad/server.js, standing in for real   */
-/* MSAL/OIDC against university AD.                                    */
-/*                                                                      */
-/* In production this whole function gets replaced by @azure/msal-browser:*/
-/*   import { PublicClientApplication } from "@azure/msal-browser";    */
-/*   const msalInstance = new PublicClientApplication(msalConfig);     */
-/*   await msalInstance.loginPopup({ scopes: ["User.Read"] });         */
-/*                                                                      */
-/* Either way, the backend never sees a password — it only ever        */
-/* verifies the JWT access token handed back here, against AD's JWKS   */
-/* endpoint (mock-ad/server.js's /discovery/v2.0/keys locally).        */
-/* ------------------------------------------------------------------ */
+const msalInstance = new PublicClientApplication({
+  auth: {
+    clientId: ENTRA_CLIENT_ID,
+    authority: ENTRA_AUTHORITY,
+    redirectUri: window.location.origin,
+  },
+  cache: {
+    cacheLocation: "sessionStorage",
+  },
+});
 
-// Calls mock-ad/server.js's /mock-login for a real RS256 JWT accepted by
-// the real backend's requireAuth middleware. The email typed in doubles as
-// the AD object id, so repeat logins with the same email map to the same
-// backend User row.
-async function signInWithUniversitySSO(formInput) {
-  const response = await fetch(`${MOCK_AD_BASE_URL}/mock-login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      role: formInput.role,
-      adObjectId: formInput.email,
-      email: formInput.email,
-      name: formInput.displayName,
-      department: formInput.department,
-    }),
-  });
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(body.error || "Sign-in failed — is mock-ad/server.js running on :4001?");
+const msalReady = msalInstance.initialize();
+
+async function signInWithEntra() {
+  if (!ENTRA_CLIENT_ID || !ENTRA_API_SCOPE) {
+    throw new Error(
+      "Entra ID is not configured. Set the VITE_ENTRA_CLIENT_ID and VITE_ENTRA_API_SCOPE values.",
+    );
   }
-  const { token } = await response.json();
+
+  await msalReady;
+  const response = await msalInstance.loginPopup({ scopes: [ENTRA_API_SCOPE] });
+  const claims = response.account.idTokenClaims || {};
+  const groupsOrRoles = [...(claims.roles || []), ...(claims.groups || [])];
+
   return {
-    displayName: formInput.displayName,
-    email: formInput.email,
-    department: formInput.department,
-    role: formInput.role,
-    adObjectId: formInput.email,
-    token,
+    displayName:
+      response.account.name ||
+      claims.name ||
+      claims.preferred_username ||
+      "Entra user",
+    email:
+      response.account.username ||
+      claims.preferred_username ||
+      claims.email ||
+      "",
+    department: claims.department || "General",
+    role: mapEntraRole(groupsOrRoles),
+    adObjectId: claims.oid || response.account.localAccountId,
+    token: response.accessToken,
+    account: response.account,
   };
 }
 
-// Must match real Category names in the backend exactly — department here
-// becomes the string checked against EduCore (or the public-API demo
-// mode), so it's free text the presenter types, not a fixed enum in
-// production. Listed here as a picker purely for demo convenience.
-const DEPARTMENTS = ["Computer Science", "Business", "Engineering", "Nursing", "Architecture"];
-const ROLES = ["STUDENT", "STAFF", "ADMIN"];
+function mapEntraRole(groupsOrRoles) {
+  if (groupsOrRoles.includes("MerchStoreAdmin")) return "ADMIN";
+  if (groupsOrRoles.includes("MerchStoreStaff")) return "STAFF";
+  return "STUDENT";
+}
 
 /* ------------------------------------------------------------------ */
 /* Design tokens — matches storefront / admin panel                    */
@@ -70,7 +75,9 @@ const COLORS = {
 };
 
 const styles = {
-  display: { fontFamily: "'Source Serif 4', Georgia, 'Times New Roman', serif" },
+  display: {
+    fontFamily: "'Source Serif 4', Georgia, 'Times New Roman', serif",
+  },
 };
 
 /* ------------------------------------------------------------------ */
@@ -78,16 +85,6 @@ const styles = {
 /* ------------------------------------------------------------------ */
 
 function SignInScreen({ onSignIn, signingIn, error }) {
-  const [form, setForm] = useState({
-    displayName: "",
-    email: "",
-    department: DEPARTMENTS[0],
-    role: "STUDENT",
-  });
-
-  const update = (field) => (e) => setForm({ ...form, [field]: e.target.value });
-  const canSubmit = form.displayName.trim() && form.email.trim();
-
   return (
     <div
       style={{
@@ -130,58 +127,39 @@ function SignInScreen({ onSignIn, signingIn, error }) {
           >
             AU
           </div>
-          <div style={{ ...styles.display, fontSize: 21, fontWeight: 700, marginBottom: 6 }}>
+          <div
+            style={{
+              ...styles.display,
+              fontSize: 21,
+              fontWeight: 700,
+              marginBottom: 6,
+            }}
+          >
             Merchandise Store
           </div>
           <div style={{ fontSize: 13, color: COLORS.muted }}>
-            Sign in or create a test account to continue.
+            Sign in or create your account with Microsoft.
           </div>
         </div>
 
         {error && (
-          <div style={{ background: "#FBEAEC", color: COLORS.redDeep, fontSize: 12.5, padding: "10px 12px", borderRadius: 5, marginBottom: 16 }}>
+          <div
+            style={{
+              background: "#FBEAEC",
+              color: COLORS.redDeep,
+              fontSize: 12.5,
+              padding: "10px 12px",
+              borderRadius: 5,
+              marginBottom: 16,
+            }}
+          >
             {error}
           </div>
         )}
 
-        <FormField label="Full name">
-          <input
-            value={form.displayName}
-            onChange={update("displayName")}
-            placeholder="e.g. Aye Myat Myat Mon"
-            style={inputStyle}
-          />
-        </FormField>
-
-        <FormField label="University email">
-          <input
-            value={form.email}
-            onChange={update("email")}
-            placeholder="e.g. 6611944@au.edu"
-            style={inputStyle}
-          />
-        </FormField>
-
-        <div style={{ display: "flex", gap: 10 }}>
-          <FormField label="Department" grow>
-            <select value={form.department} onChange={update("department")} style={inputStyle}>
-              {DEPARTMENTS.map((d) => (
-                <option key={d} value={d}>{d}</option>
-              ))}
-            </select>
-          </FormField>
-          <FormField label="Role" grow>
-            <select value={form.role} onChange={update("role")} style={inputStyle}>
-              {ROLES.map((r) => (
-                <option key={r} value={r}>{r}</option>
-              ))}
-            </select>
-          </FormField>
-        </div>
-
         <button
-          onClick={() => onSignIn(form)}
-          disabled={signingIn || !canSubmit}
+          onClick={onSignIn}
+          disabled={signingIn}
           style={{
             width: "100%",
             background: COLORS.red,
@@ -191,8 +169,8 @@ function SignInScreen({ onSignIn, signingIn, error }) {
             borderRadius: 6,
             fontSize: 14.5,
             fontWeight: 700,
-            cursor: signingIn || !canSubmit ? "default" : "pointer",
-            opacity: !canSubmit ? 0.5 : 1,
+            cursor: signingIn ? "default" : "pointer",
+            opacity: signingIn ? 0.7 : 1,
             marginTop: 6,
             display: "flex",
             alignItems: "center",
@@ -202,13 +180,16 @@ function SignInScreen({ onSignIn, signingIn, error }) {
         >
           {signingIn ? (
             <>
-              <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
-              Signing in…
+              <Loader2
+                size={16}
+                style={{ animation: "spin 1s linear infinite" }}
+              />
+              Connecting to Microsoft…
             </>
           ) : (
             <>
               <ShieldCheck size={16} />
-              Sign in
+              Continue with Microsoft
             </>
           )}
         </button>
@@ -217,27 +198,6 @@ function SignInScreen({ onSignIn, signingIn, error }) {
     </div>
   );
 }
-
-function FormField({ label, children, grow }) {
-  return (
-    <div style={{ marginBottom: 14, flex: grow ? 1 : undefined }}>
-      <label style={{ display: "block", fontSize: 12.5, color: COLORS.muted, fontWeight: 600, marginBottom: 6 }}>
-        {label}
-      </label>
-      {children}
-    </div>
-  );
-}
-
-const inputStyle = {
-  width: "100%",
-  padding: "9px 10px",
-  borderRadius: 5,
-  border: `1px solid ${COLORS.line}`,
-  fontSize: 14,
-  boxSizing: "border-box",
-  color: COLORS.ink,
-};
 
 function SignedInScreen({ user, onSignOut, onEnterStorefront, onEnterAdmin }) {
   const canManage = user.role === "STAFF" || user.role === "ADMIN";
@@ -264,7 +224,14 @@ function SignedInScreen({ user, onSignOut, onEnterStorefront, onEnterAdmin }) {
           padding: 30,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 22 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            marginBottom: 22,
+          }}
+        >
           <div
             style={{
               width: 46,
@@ -280,19 +247,45 @@ function SignedInScreen({ user, onSignOut, onEnterStorefront, onEnterAdmin }) {
               fontSize: 17,
             }}
           >
-            {user.displayName.split(" ").map((n) => n[0]).slice(0, 2).join("")}
+            {user.displayName
+              .split(" ")
+              .map((n) => n[0])
+              .slice(0, 2)
+              .join("")}
           </div>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 15 }}>{user.displayName}</div>
-            <div style={{ fontSize: 12.5, color: COLORS.muted }}>{user.email}</div>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>
+              {user.displayName}
+            </div>
+            <div style={{ fontSize: 12.5, color: COLORS.muted }}>
+              {user.email}
+            </div>
           </div>
         </div>
 
         <div style={{ display: "flex", gap: 8, marginBottom: 22 }}>
-          <span style={{ background: COLORS.redSoft, color: COLORS.redDeep, fontSize: 11.5, padding: "4px 10px", borderRadius: 20, fontWeight: 600 }}>
+          <span
+            style={{
+              background: COLORS.redSoft,
+              color: COLORS.redDeep,
+              fontSize: 11.5,
+              padding: "4px 10px",
+              borderRadius: 20,
+              fontWeight: 600,
+            }}
+          >
             {user.role}
           </span>
-          <span style={{ background: COLORS.bg, color: COLORS.ink, fontSize: 11.5, padding: "4px 10px", borderRadius: 20, border: `1px solid ${COLORS.line}` }}>
+          <span
+            style={{
+              background: COLORS.bg,
+              color: COLORS.ink,
+              fontSize: 11.5,
+              padding: "4px 10px",
+              borderRadius: 20,
+              border: `1px solid ${COLORS.line}`,
+            }}
+          >
             {user.department}
           </span>
         </div>
@@ -358,11 +351,11 @@ export default function AuthGate({ onEnterStorefront, onEnterAdmin }) {
   const [signingIn, setSigningIn] = useState(false);
   const [error, setError] = useState(null);
 
-  const handleSignIn = async (formInput) => {
+  const handleSignIn = async () => {
     setSigningIn(true);
     setError(null);
     try {
-      const claims = await signInWithUniversitySSO(formInput);
+      const claims = await signInWithEntra();
       setUser(claims);
     } catch (err) {
       setError(err.message);
@@ -372,13 +365,23 @@ export default function AuthGate({ onEnterStorefront, onEnterAdmin }) {
   };
 
   if (!user) {
-    return <SignInScreen onSignIn={handleSignIn} signingIn={signingIn} error={error} />;
+    return (
+      <SignInScreen
+        onSignIn={handleSignIn}
+        signingIn={signingIn}
+        error={error}
+      />
+    );
   }
 
   return (
     <SignedInScreen
       user={user}
-      onSignOut={() => setUser(null)}
+      onSignOut={async () => {
+        await msalReady;
+        await msalInstance.logoutPopup({ account: user.account });
+        setUser(null);
+      }}
       onEnterStorefront={() => onEnterStorefront?.(user)}
       onEnterAdmin={() => onEnterAdmin?.(user)}
     />
