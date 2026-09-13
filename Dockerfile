@@ -1,5 +1,10 @@
 FROM node:20-slim
 
+# node:20-slim ships without OpenSSL, which Prisma's engine binaries need to
+# detect the right build — without it, prisma generate/migrate silently
+# defaults to the wrong engine and fails at runtime.
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 COPY package*.json ./
