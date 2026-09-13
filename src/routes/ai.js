@@ -1,61 +1,30 @@
 const express = require("express");
-const { GoogleGenAI } = require("@google/genai");
+const { requireAuth } = require("../middleware/auth");
+const { requireRole } = require("../middleware/rbac");
+const { generateProductDescription } = require("../services/aiDescription");
 
 const router = express.Router();
 
-router.post("/generate-description", async (req, res) => {
+// STAFF/ADMIN only: draft a product description on demand — called when
+// staff click "Generate" while creating/editing a product (see
+// AdminCatalog.jsx), not automatically on save. Calling this again returns
+// a fresh draft (the model's output varies call to call); the result is
+// never saved here — it's just handed back for the form to show and let
+// staff edit before actually saving the product.
+router.post("/generate-description", requireAuth, requireRole("STAFF", "ADMIN"), async (req, res, next) => {
   try {
-    // Check Gemini API key
-    if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({
-        error: "GEMINI_API_KEY is not configured",
-      });
-    }
-
-    const ai = new GoogleGenAI({
-      apiKey: process.env.GEMINI_API_KEY,
-    });
-
-    const { name, category, price } = req.body;
-
+    const { name, categoryName, category } = req.body;
     if (!name) {
-      return res.status(400).json({
-        error: "Product name is required",
-      });
+      return res.status(400).json({ error: "name is required" });
     }
 
-    const prompt = `
-Generate an SEO-friendly product description for an e-commerce website.
-
-Product name: ${name}
-Category: ${category || "Not specified"}
-Price: ${price || "Not specified"}
-
-Requirements:
-- Write 80-120 words.
-- Make it natural and professional.
-- Make it SEO-friendly.
-- Include relevant keywords naturally.
-- Do not invent product specifications.
-- Do not mention that AI generated the description.
-- Return only the product description.
-`;
-
-    const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
-      contents: prompt,
+    const description = await generateProductDescription({
+      name,
+      categoryName: categoryName || category || "General",
     });
-
-    res.json({
-      description: response.text,
-    });
-
-  } catch (error) {
-    console.error("Gemini API error:", error);
-
-    res.status(500).json({
-      error: error.message || "Failed to generate product description",
-    });
+    res.json({ description });
+  } catch (err) {
+    next(err);
   }
 });
 

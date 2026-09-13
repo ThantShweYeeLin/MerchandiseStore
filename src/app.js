@@ -4,6 +4,7 @@ const cors = require("cors");
 const morgan = require("morgan");
 const { PrismaClient } = require("@prisma/client");
 
+const meRouter = require("./routes/me");
 const categoriesRouter = require("./routes/categories");
 const productsRouter = require("./routes/products");
 const ordersRouter = require("./routes/orders");
@@ -42,6 +43,7 @@ function createApp() {
 
   // All routes below are served under /store by Nginx
   // (see nginx/merch-store.conf)
+  app.use("/me", meRouter);
   app.use("/categories", categoriesRouter);
   app.use("/products", productsRouter);
   app.use("/orders", ordersRouter);

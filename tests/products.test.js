@@ -35,11 +35,6 @@ jest.mock("../src/middleware/auth", () => ({
   },
 }));
 
-jest.mock("../src/services/aiDescription", () => ({
-  generateProductDescription: jest.fn(),
-}));
-
-const { generateProductDescription } = require("../src/services/aiDescription");
 const productsRouter = require("../src/routes/products");
 
 function buildApp() {
@@ -51,9 +46,8 @@ function buildApp() {
 }
 
 describe("POST /products", () => {
-  it("creates a product with an AI-generated description", async () => {
+  it("creates a product with the description provided in the request body", async () => {
     mockPrismaClient.category.findUnique.mockResolvedValue({ id: "cat-1", name: "Computer Science" });
-    generateProductDescription.mockResolvedValue("A cozy CS-branded hoodie.");
     mockPrismaClient.product.create.mockResolvedValue({
       id: "p1",
       name: "CS Hoodie",
@@ -64,19 +58,24 @@ describe("POST /products", () => {
     const res = await request(buildApp())
       .post("/products")
       .set("x-test-role", "STAFF")
-      .send({ name: "CS Hoodie", slug: "cs-hoodie", price: 25, categoryId: "cat-1", stock: 10 });
+      .send({
+        name: "CS Hoodie",
+        slug: "cs-hoodie",
+        price: 25,
+        categoryId: "cat-1",
+        stock: 10,
+        description: "A cozy CS-branded hoodie.",
+      });
 
     expect(res.status).toBe(201);
-    expect(generateProductDescription).toHaveBeenCalledWith({
-      name: "CS Hoodie",
-      categoryName: "Computer Science",
-    });
+    expect(mockPrismaClient.product.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ description: "A cozy CS-branded hoodie." }) })
+    );
     expect(mockPrismaClient.auditLog.create).toHaveBeenCalled();
   });
 
-  it("still creates the product if the AI API call fails", async () => {
+  it("creates a product with a null description when none is provided", async () => {
     mockPrismaClient.category.findUnique.mockResolvedValue({ id: "cat-1", name: "Computer Science" });
-    generateProductDescription.mockRejectedValue(new Error("AI API down"));
     mockPrismaClient.product.create.mockResolvedValue({ id: "p2", name: "CS Mug", description: null });
     mockPrismaClient.auditLog.create.mockResolvedValue({});
 

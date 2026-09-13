@@ -1,0 +1,6 @@
+-- AlterEnum
+ALTER TYPE "OrderStatus" ADD VALUE 'READY_FOR_PICKUP';
+
+-- AlterTable
+ALTER TABLE "Category" ADD COLUMN     "discountRate" DOUBLE PRECISION NOT NULL DEFAULT 0.15;
+

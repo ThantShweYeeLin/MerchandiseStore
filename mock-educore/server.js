@@ -38,7 +38,7 @@ const express = require("express"); // resolves from the project root's node_mod
 const axios = require("axios");
 
 const app = express();
-const PORT = process.env.MOCK_EDUCORE_PORT || 4000;
+const PORT = process.env.PORT || process.env.MOCK_EDUCORE_PORT || 4000;
 const MODE = process.env.MOCK_EDUCORE_MODE || "static";
 
 // Each demo student's one real, true department — independent of whatever
@@ -47,8 +47,8 @@ const MODE = process.env.MOCK_EDUCORE_MODE || "static";
 // claim). A studentId not listed here has no known enrollment anywhere, so
 // it's denied for every department — no random luck for arbitrary logins.
 const ROSTER = {
-  "ad-student-1": "Computer Science",
-  "ad-student-3": "Business",
+  // u6632067@au.edu — real test student account, really enrolled in VMES.
+  "5d5cc239-651f-4e60-a2da-8745e340c58d": "VMES",
 };
 
 async function pingPublicApi(studentId, department) {

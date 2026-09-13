@@ -163,7 +163,7 @@ describe("POST /orders", () => {
 });
 
 describe("GET /orders", () => {
-  it("scopes results to the staff member's own department", async () => {
+  it("lets STAFF see orders across every department, not just their own", async () => {
     mockPrismaClient.order.findMany.mockResolvedValue([{ id: "o1" }]);
 
     const res = await request(buildApp())
@@ -172,15 +172,7 @@ describe("GET /orders", () => {
       .set("x-test-department", "Computer Science");
 
     expect(res.status).toBe(200);
-    expect(mockPrismaClient.order.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          items: {
-            some: { product: { category: { name: "Computer Science" } } },
-          },
-        },
-      })
-    );
+    expect(mockPrismaClient.order.findMany.mock.calls[0][0]).not.toHaveProperty("where");
   });
 
   it("lets ADMIN see orders across every department", async () => {
@@ -189,9 +181,7 @@ describe("GET /orders", () => {
     const res = await request(buildApp()).get("/orders").set("x-test-role", "ADMIN");
 
     expect(res.status).toBe(200);
-    expect(mockPrismaClient.order.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: {} })
-    );
+    expect(mockPrismaClient.order.findMany.mock.calls[0][0]).not.toHaveProperty("where");
   });
 
   it("rejects STUDENT from listing all orders", async () => {

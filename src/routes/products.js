@@ -2,11 +2,24 @@ const express = require("express");
 const { PrismaClient } = require("@prisma/client");
 const { requireAuth } = require("../middleware/auth");
 const { requireRole } = require("../middleware/rbac");
-const { generateProductDescription } = require("../services/aiDescription");
 const { recordAudit } = require("../utils/auditLog");
 
 const router = express.Router();
 const prisma = new PrismaClient();
+
+// Returns { ok: true, value } or { ok: false, error }. `undefined`/""/null all
+// mean "no override, use the category's rate"; anything else must be a
+// number between 0 and 1.
+function parseDiscountRate(discountRate) {
+  if (discountRate === undefined || discountRate === null || discountRate === "") {
+    return { ok: true, value: null };
+  }
+  const num = Number(discountRate);
+  if (Number.isNaN(num) || num < 0 || num > 1) {
+    return { ok: false, error: "discountRate must be a number between 0 and 1, or blank" };
+  }
+  return { ok: true, value: num };
+}
 
 // Students and staff can browse the catalog
 router.get("/", requireAuth, async (req, res, next) => {
@@ -33,20 +46,18 @@ router.get("/:id", requireAuth, async (req, res, next) => {
   }
 });
 
-// STAFF/ADMIN only: create — auto-drafts the description via the AI API
+// STAFF/ADMIN only: create. Description is whatever the client sends — it's
+// drafted on demand via POST /ai/generate-description (and editable there),
+// not auto-generated here.
 router.post("/", requireAuth, requireRole("STAFF", "ADMIN"), async (req, res, next) => {
   try {
-    const { name, slug, price, categoryId, imageUrl, stock } = req.body;
+    const { name, slug, price, categoryId, imageUrl, stock, description, discountRate } = req.body;
 
     const category = await prisma.category.findUnique({ where: { id: categoryId } });
     if (!category) return res.status(400).json({ error: "Invalid categoryId" });
 
-    let description;
-    try {
-      description = await generateProductDescription({ name, categoryName: category.name });
-    } catch (aiErr) {
-      description = null; // catalog creation should not hard-fail if the AI API is down
-    }
+    const parsedRate = parseDiscountRate(discountRate);
+    if (!parsedRate.ok) return res.status(400).json({ error: parsedRate.error });
 
     const product = await prisma.product.create({
       data: {
@@ -54,9 +65,10 @@ router.post("/", requireAuth, requireRole("STAFF", "ADMIN"), async (req, res, ne
         slug,
         price,
         categoryId,
-        imageUrl,
+        imageUrl: imageUrl || null,
         stock: stock ?? 0,
-        description,
+        description: description || null,
+        discountRate: parsedRate.value,
         createdById: req.user.id,
       },
     });
@@ -74,32 +86,34 @@ router.post("/", requireAuth, requireRole("STAFF", "ADMIN"), async (req, res, ne
   }
 });
 
-// STAFF/ADMIN only: update — regenerates the description
+// STAFF/ADMIN only: update. Description is whatever the client sends —
+// falls back to the existing value if omitted, so a save that didn't touch
+// the description field doesn't accidentally clear it.
 router.put("/:id", requireAuth, requireRole("STAFF", "ADMIN"), async (req, res, next) => {
   try {
     const existing = await prisma.product.findUnique({ where: { id: req.params.id } });
     if (!existing) return res.status(404).json({ error: "Not found" });
 
-    const { name, price, categoryId, imageUrl, stock } = req.body;
-    const category = await prisma.category.findUnique({
-      where: { id: categoryId ?? existing.categoryId },
-    });
+    const { name, price, categoryId, imageUrl, stock, description, discountRate } = req.body;
 
-    let description = existing.description;
-    if (name && name !== existing.name) {
-      try {
-        description = await generateProductDescription({
-          name,
-          categoryName: category.name,
-        });
-      } catch (aiErr) {
-        // keep prior description if regeneration fails
-      }
+    let discountRateValue = existing.discountRate;
+    if (discountRate !== undefined) {
+      const parsedRate = parseDiscountRate(discountRate);
+      if (!parsedRate.ok) return res.status(400).json({ error: parsedRate.error });
+      discountRateValue = parsedRate.value;
     }
 
     const product = await prisma.product.update({
       where: { id: req.params.id },
-      data: { name, price, categoryId, imageUrl, stock, description },
+      data: {
+        name,
+        price,
+        categoryId,
+        imageUrl: imageUrl !== undefined ? imageUrl || null : existing.imageUrl,
+        stock,
+        description: description !== undefined ? description || null : existing.description,
+        discountRate: discountRateValue,
+      },
     });
 
     await recordAudit({

@@ -6,8 +6,12 @@ const prisma = new PrismaClient();
 
 // University AD (Azure AD / Entra ID) OIDC JWKS endpoint. Set via Key Vault
 // or, for the tenant-level metadata endpoints (not secrets), plain env config.
+// Using the tenant-agnostic /common endpoint here (rather than one specific
+// tenant's) since the app registration accepts any Microsoft account — the
+// v2.0 signing keys served here are the same regardless of which real
+// tenant issued a given token, so this works for verifying all of them.
 const client = jwksClient({
-  jwksUri: process.env.AD_JWKS_URI, // e.g. https://login.microsoftonline.com/{tenant}/discovery/v2.0/keys
+  jwksUri: process.env.AD_JWKS_URI, // e.g. https://login.microsoftonline.com/common/discovery/v2.0/keys
 });
 
 function getSigningKey(header, callback) {
@@ -16,6 +20,13 @@ function getSigningKey(header, callback) {
     callback(null, key.getPublicKey());
   });
 }
+
+// The app accepts sign-in from any Microsoft account (any org tenant, or a
+// personal account), so the token's `iss` claim varies per real signer —
+// there's no single fixed issuer string to check against. Signature
+// (via JWKS above) and audience are still verified per-token; this just
+// confirms the issuer is shaped like a genuine Microsoft v2.0 endpoint.
+const MICROSOFT_ISSUER_PATTERN = /^https:\/\/login\.microsoftonline\.com\/[0-9a-f-]+\/v2\.0$/i;
 
 /**
  * Verifies the AD-issued access token, then syncs/loads the local User row
@@ -34,11 +45,16 @@ function requireAuth(req, res, next) {
     getSigningKey,
     {
       audience: process.env.AD_CLIENT_ID,
-      issuer: process.env.AD_ISSUER,
       algorithms: ["RS256"],
     },
     async (err, decoded) => {
+      // TEMPORARY debug logging — remove once sign-in is confirmed working.
       if (err) {
+        console.error("[auth debug] jwt.verify failed:", err.name, err.message);
+      } else if (!MICROSOFT_ISSUER_PATTERN.test(decoded?.iss || "")) {
+        console.error("[auth debug] issuer pattern rejected. iss =", decoded?.iss, "aud =", decoded?.aud);
+      }
+      if (err || !MICROSOFT_ISSUER_PATTERN.test(decoded?.iss || "")) {
         return res.status(401).json({ error: "Invalid or expired token" });
       }
 

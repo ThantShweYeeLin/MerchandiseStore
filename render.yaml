@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: merch-store-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: ALLOW_LOCAL_DEV_SECRETS
+        value: "true"
+      - key: AD_JWKS_URI
+        value: https://login.microsoftonline.com/common/discovery/v2.0/keys
+      - key: AD_CLIENT_ID
+        value: eae83191-3059-4008-b23d-1ac591de0fe1
+      - key: AD_ADMIN_EMAILS
+        value: u6611946@au.edu
+      - key: EDUCORE_BASE_URL
+        value: https://merch-mock-educore.onrender.com
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: AI_API_KEY
+        sync: false
+      - key: EDUCORE_API_KEY
+        sync: false
+      - key: EDUCORE_INBOUND_KEY
+        sync: false
+
+  - type: web
+    name: merch-mock-educore
+    runtime: node
+    buildCommand: npm install
+    startCommand: node mock-educore/server.js
+    plan: free
+    envVars:
+      - key: MOCK_EDUCORE_MODE
+        value: public-api

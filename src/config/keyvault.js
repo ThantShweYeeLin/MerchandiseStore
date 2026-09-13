@@ -5,6 +5,7 @@ const { SecretClient } = require("@azure/keyvault-secrets");
 const SECRETS = [
   { vaultName: "DATABASE-URL", envVar: "DATABASE_URL" },
   { vaultName: "JWT-SECRET", envVar: "JWT_SECRET" },
+  { vaultName: "AI-API-KEY", envVar: "AI_API_KEY" },
   { vaultName: "EDUCORE-API-KEY", envVar: "EDUCORE_API_KEY" },
   { vaultName: "EDUCORE-INBOUND-KEY", envVar: "EDUCORE_INBOUND_KEY" },
 ];

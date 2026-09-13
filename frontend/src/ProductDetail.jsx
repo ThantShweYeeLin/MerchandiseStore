@@ -23,9 +23,13 @@ const styles = {
   display: { fontFamily: "'Source Serif 4', Georgia, 'Times New Roman', serif" },
 };
 
-export default function ProductDetail({ product, onBack, onAddToCart }) {
+export default function ProductDetail({ product, viewerDepartment, onBack, onAddToCart }) {
   const [qty, setQty] = useState(1);
   const [added, setAdded] = useState(false);
+
+  const isViewerDepartment = product.department && product.department === viewerDepartment;
+  const discountRate = product.discountRate ?? 0.15;
+  const discountedPrice = product.price * (1 - discountRate);
 
   // ProductImage rows from the ERD, one row per photo + sortOrder.
   // Falls back to a single placeholder slot if the product has no images.
@@ -42,7 +46,7 @@ export default function ProductDetail({ product, onBack, onAddToCart }) {
   };
 
   return (
-    <div style={{ fontFamily: "'IBM Plex Sans', -apple-system, sans-serif", background: COLORS.bg, minHeight: "100%" }}>
+    <div style={{ fontFamily: "'IBM Plex Sans', -apple-system, sans-serif", background: COLORS.bg, minHeight: "100svh" }}>
       <div style={{ maxWidth: 980, margin: "0 auto", padding: "24px 28px" }}>
         <button
           onClick={onBack}
@@ -63,24 +67,37 @@ export default function ProductDetail({ product, onBack, onAddToCart }) {
           <ChevronLeft size={16} /> Back to catalog
         </button>
 
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 40 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 40 }}>
           {/* ── Gallery ─────────────────────────────────────────── */}
           <div>
             <div
               style={{
-                height: 340,
+                height: "clamp(200px, 45vw, 340px)",
                 borderRadius: 8,
-                background: `linear-gradient(135deg, ${COLORS.red}, ${COLORS.redDeep})`,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: COLORS.redSoft,
-                fontSize: 14,
-                letterSpacing: "0.04em",
+                overflow: "hidden",
                 marginBottom: 10,
+                ...(product.imageUrl
+                  ? {}
+                  : {
+                      background: `linear-gradient(135deg, ${COLORS.red}, ${COLORS.redDeep})`,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: COLORS.redSoft,
+                      fontSize: 14,
+                      letterSpacing: "0.04em",
+                    }),
               }}
             >
-              {images[activeImage]?.label ?? product.category}
+              {product.imageUrl ? (
+                <img
+                  src={product.imageUrl}
+                  alt={product.name}
+                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                />
+              ) : (
+                images[activeImage]?.label ?? product.category
+              )}
             </div>
             {images.length > 1 && (
               <div style={{ display: "flex", gap: 8 }}>
@@ -125,12 +142,23 @@ export default function ProductDetail({ product, onBack, onAddToCart }) {
                 }}
               >
                 <ShieldCheck size={13} />
-                15% off for verified {product.department} students
+                {isViewerDepartment
+                  ? `✓ ${Math.round(discountRate * 100)}% off — matches your department`
+                  : `${Math.round(discountRate * 100)}% off for verified ${product.department} students`}
               </div>
             )}
 
-            <div style={{ ...styles.display, fontSize: 26, fontWeight: 700, marginBottom: 18 }}>
-              ฿{product.price}
+            <div style={{ ...styles.display, fontSize: 26, fontWeight: 700, marginBottom: 18, display: "flex", alignItems: "baseline", gap: 10 }}>
+              {isViewerDepartment ? (
+                <>
+                  <span style={{ textDecoration: "line-through", color: COLORS.muted, fontSize: 16, fontWeight: 500 }}>
+                    ฿{product.price}
+                  </span>
+                  <span style={{ color: COLORS.red }}>฿{discountedPrice.toFixed(0)}</span>
+                </>
+              ) : (
+                <span>฿{product.price}</span>
+              )}
             </div>
 
             <div style={{ fontSize: 14.5, color: "#4A4438", lineHeight: 1.6, marginBottom: 22 }}>
@@ -153,7 +181,10 @@ export default function ProductDetail({ product, onBack, onAddToCart }) {
                 </button>
               </div>
               <div style={{ fontSize: 13, color: COLORS.muted }}>
-                Subtotal: <strong style={{ color: COLORS.ink }}>฿{product.price * qty}</strong>
+                Subtotal:{" "}
+                <strong style={{ color: COLORS.ink }}>
+                  ฿{((isViewerDepartment ? discountedPrice : product.price) * qty).toFixed(0)}
+                </strong>
               </div>
             </div>
 

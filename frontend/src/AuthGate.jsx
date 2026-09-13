@@ -7,7 +7,7 @@ import {
   GraduationCap,
   Briefcase,
 } from "lucide-react";
-import { ENTRA_API_SCOPE, ENTRA_AUTHORITY, ENTRA_CLIENT_ID } from "./config";
+import { API_BASE_URL, ENTRA_AUTHORITY, ENTRA_CLIENT_ID } from "./config";
 
 const msalInstance = new PublicClientApplication({
   auth: {
@@ -20,14 +20,54 @@ const msalInstance = new PublicClientApplication({
   },
 });
 
-const msalReady = msalInstance
-  .initialize()
-  .then(() => msalInstance.handleRedirectPromise());
+// On a real redirect return, handleRedirectPromise() resolves with the
+// fresh sign-in result. On a plain page load/refresh it resolves to null —
+// but MSAL still has the account cached (sessionStorage), so we silently
+// re-acquire a token for it instead of forcing the user through
+// Microsoft's login screen again on every refresh.
+const msalReady = msalInstance.initialize().then(async () => {
+  const redirectResponse = await msalInstance.handleRedirectPromise();
+  if (redirectResponse) return redirectResponse;
+
+  const [existingAccount] = msalInstance.getAllAccounts();
+  if (!existingAccount) return null;
+
+  try {
+    return await msalInstance.acquireTokenSilent({
+      account: existingAccount,
+      scopes: ["openid", "profile", "email"],
+    });
+  } catch {
+    return null; // silent refresh failed — falls back to the sign-in screen
+  }
+});
+
+// Called periodically by App.jsx while the user is actively browsing (see
+// TOKEN_REFRESH_INTERVAL_MS there) — the ID token is short-lived (~1 hour),
+// and without this, a long-running tab (no page reload) eventually starts
+// sending an expired token and every API call 401s until the page is
+// manually refreshed. Returns the fresh token, or null if silent renewal
+// isn't possible (e.g. the underlying Microsoft session itself expired) —
+// callers should just keep using the old token and let the user's next
+// manual refresh sort it out, rather than force a disruptive sign-out.
+export async function refreshToken() {
+  const [existingAccount] = msalInstance.getAllAccounts();
+  if (!existingAccount) return null;
+  try {
+    const result = await msalInstance.acquireTokenSilent({
+      account: existingAccount,
+      scopes: ["openid", "profile", "email"],
+    });
+    return result?.idToken || null;
+  } catch {
+    return null;
+  }
+}
 
 async function signInWithEntra() {
-  if (!ENTRA_CLIENT_ID || !ENTRA_API_SCOPE) {
+  if (!ENTRA_CLIENT_ID) {
     throw new Error(
-      "Entra ID is not configured. Set the VITE_ENTRA_CLIENT_ID and VITE_ENTRA_API_SCOPE values.",
+      "Entra ID is not configured. Set the VITE_ENTRA_CLIENT_ID value.",
     );
   }
   if (!isGuid(ENTRA_CLIENT_ID)) {
@@ -35,20 +75,31 @@ async function signInWithEntra() {
       "VITE_ENTRA_CLIENT_ID must be the frontend app registration's Application (client) ID GUID.",
     );
   }
-  if (!isGuid(import.meta.env.VITE_ENTRA_TENANT_ID || "")) {
+  const tenantId = import.meta.env.VITE_ENTRA_TENANT_ID || "";
+  // "common"/"organizations"/"consumers" are Microsoft's multi-tenant aliases
+  // (used when the app accepts any Microsoft account, not one fixed tenant)
+  // — a real tenant GUID is only expected for a single-tenant app registration.
+  const MULTI_TENANT_ALIASES = ["common", "organizations", "consumers"];
+  if (!isGuid(tenantId) && !MULTI_TENANT_ALIASES.includes(tenantId)) {
     throw new Error(
-      "VITE_ENTRA_TENANT_ID must be the Microsoft Entra Directory (tenant) ID GUID.",
+      "VITE_ENTRA_TENANT_ID must be the Microsoft Entra Directory (tenant) ID GUID, or one of common/organizations/consumers.",
     );
   }
 
+  // No custom API scope requested — an access token scoped to our own
+  // exposed API would require Microsoft to provision that resource inside
+  // the signed-in user's own tenant first, which doesn't happen for
+  // arbitrary outside tenants (this is what caused AADSTS500011). The ID
+  // token needs none of that: it's always issued for our own client app,
+  // for any Microsoft account, in any tenant.
   await msalReady;
   await msalInstance.loginRedirect({
-    scopes: ["openid", "profile", "email", ENTRA_API_SCOPE],
+    scopes: ["openid", "profile", "email"],
   });
 }
 
 function userFromAuthResponse(response) {
-  if (!response?.account || !response.accessToken) return null;
+  if (!response?.account || !response.idToken) return null;
   const account = response.account;
   const claims = account.idTokenClaims || {};
   const groupsOrRoles = [...(claims.roles || []), ...(claims.groups || [])];
@@ -60,9 +111,22 @@ function userFromAuthResponse(response) {
     department: claims.department || "General",
     role: mapEntraRole(groupsOrRoles),
     adObjectId: claims.oid || account.localAccountId,
-    token: response.accessToken,
+    token: response.idToken,
     account,
   };
+}
+
+// The Entra-claims-derived role/department above is only a best guess (app
+// role assignments Entra itself knows about). The backend can also promote
+// someone via AD_ADMIN_EMAILS (Entra has no idea this happened) and assigns
+// department manually (see PATCH /admin/users/:id/department) — so the real
+// values always come from here, overriding the guess once available.
+async function fetchMe(token) {
+  const response = await fetch(`${API_BASE_URL}/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error(`Could not load account details (${response.status})`);
+  return response.json();
 }
 
 function isGuid(value) {
@@ -102,11 +166,30 @@ const styles = {
 /* Screens                                                              */
 /* ------------------------------------------------------------------ */
 
+// Same gradient/frame as SignInScreen so there's no visible flash if it
+// turns out no session exists and SignInScreen replaces it a moment later.
+function LoadingScreen() {
+  return (
+    <div
+      style={{
+        minHeight: "100svh",
+        background: `linear-gradient(180deg, ${COLORS.red} 0%, ${COLORS.redDeep} 100%)`,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Loader2 size={28} color={COLORS.white} style={{ animation: "spin 1s linear infinite" }} />
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
+
 function SignInScreen({ onSignIn, signingIn, error }) {
   return (
     <div
       style={{
-        minHeight: "100%",
+        minHeight: "100svh",
         background: `linear-gradient(180deg, ${COLORS.red} 0%, ${COLORS.redDeep} 100%)`,
         display: "flex",
         alignItems: "center",
@@ -222,7 +305,7 @@ function SignedInScreen({ user, onSignOut, onEnterStorefront, onEnterAdmin }) {
   return (
     <div
       style={{
-        minHeight: "100%",
+        minHeight: "100svh",
         background: COLORS.bg,
         fontFamily: "'IBM Plex Sans', -apple-system, sans-serif",
         display: "flex",
@@ -314,7 +397,7 @@ function SignedInScreen({ user, onSignOut, onEnterStorefront, onEnterAdmin }) {
           </button>
           {canManage && (
             <button onClick={onEnterAdmin} style={navButton(true)}>
-              <Briefcase size={16} /> Manage catalog (admin)
+              <Briefcase size={16} /> Manage catalog ({user.role === "ADMIN" ? "admin" : "staff"})
             </button>
           )}
         </div>
@@ -364,18 +447,51 @@ function navButton(primary) {
 /* Root component                                                       */
 /* ------------------------------------------------------------------ */
 
-export default function AuthGate({ onEnterStorefront, onEnterAdmin }) {
+export default function AuthGate({ onEnterStorefront, onEnterAdmin, autoEnter }) {
   const [user, setUser] = useState(null);
+  // True until the initial silent-session check (see msalReady above)
+  // finishes — while true we show a neutral loading screen instead of
+  // flashing the sign-in form before immediately replacing it once an
+  // existing session is found.
+  const [checkingSession, setCheckingSession] = useState(true);
   const [signingIn, setSigningIn] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
     msalReady
-      .then((response) => {
+      .then(async (response) => {
         const signedInUser = userFromAuthResponse(response);
-        if (signedInUser) setUser(signedInUser);
+        if (!signedInUser) return;
+        let finalUser = signedInUser;
+        try {
+          const me = await fetchMe(signedInUser.token);
+          finalUser = {
+            ...signedInUser,
+            role: me.role,
+            department: me.department || signedInUser.department,
+            displayName: me.displayName || signedInUser.displayName,
+          };
+        } catch {
+          // Backend unreachable — fall back to the Entra-claims-derived
+          // guess rather than blocking sign-in entirely.
+        }
+        setUser(finalUser);
+
+        // A remembered destination (App.jsx restores this from
+        // sessionStorage on refresh) means this is a silently-restored
+        // session, not a fresh interactive sign-in — skip straight back to
+        // where they were instead of showing the "where do you want to go"
+        // card again. Only auto-enter admin if the role actually still
+        // allows it (a demoted user falls through to the normal card).
+        if (autoEnter === "storefront") {
+          onEnterStorefront?.(finalUser);
+        } else if (autoEnter === "admin" && (finalUser.role === "STAFF" || finalUser.role === "ADMIN")) {
+          onEnterAdmin?.(finalUser);
+        }
       })
-      .catch((err) => setError(err.message));
+      .catch((err) => setError(err.message))
+      .finally(() => setCheckingSession(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSignIn = async () => {
@@ -390,6 +506,10 @@ export default function AuthGate({ onEnterStorefront, onEnterAdmin }) {
       setSigningIn(false);
     }
   };
+
+  if (checkingSession) {
+    return <LoadingScreen />;
+  }
 
   if (!user) {
     return (

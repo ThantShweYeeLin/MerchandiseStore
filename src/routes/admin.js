@@ -69,6 +69,39 @@ router.patch("/users/:id/role", requireAuth, requireRole("ADMIN"), async (req, r
   }
 });
 
+// ADMIN only: set a user's department. Only meaningful for STAFF (scopes
+// which orders they see — see GET /orders) — department has no automatic
+// source now that sign-in accepts any Microsoft account, so an admin sets it
+// directly. Students don't need this: their discount is verified per-order
+// against EduCore, independent of this field.
+router.patch("/users/:id/department", requireAuth, requireRole("ADMIN"), async (req, res, next) => {
+  try {
+    const { department } = req.body;
+    if (typeof department !== "string" || !department.trim()) {
+      return res.status(400).json({ error: "department is required" });
+    }
+
+    const existing = await prisma.user.findUnique({ where: { id: req.params.id } });
+    if (!existing) return res.status(404).json({ error: "User not found" });
+
+    const user = await prisma.user.update({
+      where: { id: req.params.id },
+      data: { department: department.trim() },
+    });
+
+    await recordAudit({
+      userId: req.user.id,
+      action: "USER_DEPARTMENT_UPDATED",
+      entityType: "User",
+      entityId: user.id,
+    });
+
+    res.json(user);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ADMIN only: rotate the static key issued to EduCore for the inbound peer
 // endpoint. Returns the new key once — it is not retrievable again.
 router.post(
