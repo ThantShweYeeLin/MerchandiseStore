@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { Plus, Pencil, Trash2, X, Loader2, LayoutGrid, Tag, Sparkles, Search } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Loader2, LayoutGrid, Tag, Sparkles, Search, ClipboardList } from "lucide-react";
 import { API_BASE_URL } from "./config";
 
 /* ------------------------------------------------------------------ */
@@ -143,6 +143,13 @@ async function updateOrderStatus(orderId, status, token) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || `Failed to update order status (${res.status})`);
   }
+  return res.json();
+}
+
+// ADMIN only: the audit trail — who did what, and when.
+async function fetchAuditLog(token) {
+  const res = await fetch(`${API_BASE_URL}/admin/audit-log`, { headers: authHeaders(token) });
+  if (!res.ok) throw new Error(`Failed to load audit log (${res.status})`);
   return res.json();
 }
 
@@ -867,6 +874,131 @@ function OrdersPanel({ token }) {
   );
 }
 
+function AuditLogPanel({ token }) {
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const [entityFilter, setEntityFilter] = useState("All");
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      setLoadError(null);
+      try {
+        setLogs(await fetchAuditLog(token));
+      } catch (err) {
+        setLoadError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [token]);
+
+  const entityTypes = useMemo(() => ["All", ...new Set(logs.map((l) => l.entityType))], [logs]);
+
+  const filteredLogs = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return logs.filter((l) => {
+      const matchesEntity = entityFilter === "All" || l.entityType === entityFilter;
+      const matchesSearch =
+        !query ||
+        l.user.displayName.toLowerCase().includes(query) ||
+        l.user.email.toLowerCase().includes(query) ||
+        l.action.toLowerCase().includes(query);
+      return matchesEntity && matchesSearch;
+    });
+  }, [logs, entityFilter, search]);
+
+  return (
+    <>
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ ...styles.display, fontSize: 24, fontWeight: 700 }}>Audit log</div>
+        <div style={{ fontSize: 13, color: COLORS.muted, marginTop: 2 }}>
+          A record of administrative and staff actions — product changes, order status updates,
+          and account changes — together with who performed them and when. Most recent 200 entries.
+        </div>
+      </div>
+
+      {loadError && (
+        <div style={{ background: "#FBEAEC", color: COLORS.redDeep, padding: "12px 14px", borderRadius: 5, marginBottom: 18, fontSize: 13.5 }}>
+          {loadError}
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 16 }}>
+        <div style={{ position: "relative", flex: "1 1 220px", maxWidth: 320 }}>
+          <Search size={15} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: COLORS.muted }} />
+          <input
+            id="audit-log-search"
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name or action…"
+            style={{ ...inputStyle, paddingLeft: 32 }}
+          />
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {entityTypes.map((t) => (
+            <SectionTab key={t} active={entityFilter === t} onClick={() => setEntityFilter(t)}>
+              {t}
+            </SectionTab>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ background: COLORS.white, border: `1px solid ${COLORS.line}`, borderRadius: 8, overflow: "hidden" }}>
+        {loading ? (
+          <div style={{ padding: 40, textAlign: "center", color: COLORS.muted, fontSize: 14 }}>Loading…</div>
+        ) : logs.length === 0 ? (
+          <div style={{ padding: 40, textAlign: "center", color: COLORS.muted, fontSize: 14 }}>
+            <ClipboardList size={22} style={{ marginBottom: 8, opacity: 0.5 }} />
+            <div>No actions recorded yet.</div>
+          </div>
+        ) : filteredLogs.length === 0 ? (
+          <div style={{ padding: 40, textAlign: "center", color: COLORS.muted, fontSize: 14 }}>
+            No entries match your search or filter.
+          </div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 640 }}>
+              <thead>
+                <tr style={{ background: COLORS.bg, borderBottom: `1px solid ${COLORS.line}` }}>
+                  <Th>Time</Th>
+                  <Th>Performed by</Th>
+                  <Th>Action</Th>
+                  <Th>Entity</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredLogs.map((log) => (
+                  <tr key={log.id} style={{ borderBottom: `1px solid ${COLORS.line}` }}>
+                    <td style={{ padding: "12px 14px", fontSize: 12.5, color: COLORS.muted, whiteSpace: "nowrap" }}>
+                      {new Date(log.createdAt).toLocaleString()}
+                    </td>
+                    <td style={{ padding: "12px 14px" }}>
+                      <div style={{ fontWeight: 600, fontSize: 14 }}>{log.user.displayName}</div>
+                      <div style={{ fontSize: 12.5, color: COLORS.muted }}>{log.user.email}</div>
+                    </td>
+                    <td style={{ padding: "12px 14px" }}>
+                      <span style={{ background: COLORS.redSoft, color: COLORS.redDeep, fontSize: 11.5, padding: "3px 8px", borderRadius: 3, fontWeight: 600 }}>
+                        {log.action.replace(/_/g, " ")}
+                      </span>
+                    </td>
+                    <td style={{ padding: "12px 14px", fontSize: 12.5, color: COLORS.muted }}>
+                      {log.entityType} · {log.entityId.slice(0, 8)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
 function SectionTab({ active, onClick, children }) {
   return (
     <button
@@ -996,10 +1128,15 @@ export default function AdminCatalog({ token, role }) {
           {role === "ADMIN" && (
             <SectionTab active={section === "users"} onClick={() => setSection("users")}>Users</SectionTab>
           )}
+          {role === "ADMIN" && (
+            <SectionTab active={section === "audit"} onClick={() => setSection("audit")}>Audit Log</SectionTab>
+          )}
         </div>
 
         {section === "users" && role === "ADMIN" ? (
           <UsersPanel token={token} categories={categories} />
+        ) : section === "audit" && role === "ADMIN" ? (
+          <AuditLogPanel token={token} />
         ) : section === "orders" ? (
           <OrdersPanel token={token} />
         ) : (
