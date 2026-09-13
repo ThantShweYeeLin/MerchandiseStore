@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { Plus, Pencil, Trash2, X, Loader2, LayoutGrid, Tag, Sparkles } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Loader2, LayoutGrid, Tag, Sparkles, Search } from "lucide-react";
 import { API_BASE_URL } from "./config";
 
 /* ------------------------------------------------------------------ */
@@ -696,6 +696,8 @@ function OrdersPanel({ token }) {
   const [loadError, setLoadError] = useState(null);
   const [savingId, setSavingId] = useState(null);
   const [rowError, setRowError] = useState({});
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -724,6 +726,15 @@ function OrdersPanel({ token }) {
     }
   };
 
+  const filteredOrders = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return orders.filter((o) => {
+      const matchesStatus = statusFilter === "ALL" || o.status === statusFilter;
+      const matchesSearch = !query || o.user.displayName.toLowerCase().includes(query);
+      return matchesStatus && matchesSearch;
+    });
+  }, [orders, statusFilter, search]);
+
   return (
     <>
       <div style={{ marginBottom: 20 }}>
@@ -739,12 +750,40 @@ function OrdersPanel({ token }) {
         </div>
       )}
 
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 16 }}>
+        <div style={{ position: "relative", flex: "1 1 220px", maxWidth: 320 }}>
+          <Search size={15} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: COLORS.muted }} />
+          <input
+            id="orders-search"
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name…"
+            style={{ ...inputStyle, paddingLeft: 32 }}
+          />
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          <SectionTab active={statusFilter === "ALL"} onClick={() => setStatusFilter("ALL")}>
+            All
+          </SectionTab>
+          {ORDER_STATUSES.map((s) => (
+            <SectionTab key={s} active={statusFilter === s} onClick={() => setStatusFilter(s)}>
+              {s.replace(/_/g, " ")}
+            </SectionTab>
+          ))}
+        </div>
+      </div>
+
       <div style={{ background: COLORS.white, border: `1px solid ${COLORS.line}`, borderRadius: 8, overflow: "hidden" }}>
         {loading ? (
           <div style={{ padding: 40, textAlign: "center", color: COLORS.muted, fontSize: 14 }}>Loading…</div>
         ) : orders.length === 0 ? (
           <div style={{ padding: 40, textAlign: "center", color: COLORS.muted, fontSize: 14 }}>
             No orders yet{token ? " for your department" : ""}.
+          </div>
+        ) : filteredOrders.length === 0 ? (
+          <div style={{ padding: 40, textAlign: "center", color: COLORS.muted, fontSize: 14 }}>
+            No orders match your search or filter.
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
@@ -759,7 +798,7 @@ function OrdersPanel({ token }) {
                 </tr>
               </thead>
               <tbody>
-                {orders.map((o) => (
+                {filteredOrders.map((o) => (
                   <tr key={o.id} style={{ borderBottom: `1px solid ${COLORS.line}` }}>
                     <td style={{ padding: "12px 14px" }}>
                       <div style={{ fontWeight: 600, fontSize: 14 }}>{o.user.displayName}</div>
