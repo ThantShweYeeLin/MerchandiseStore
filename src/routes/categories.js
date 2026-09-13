@@ -34,36 +34,6 @@ router.post("/", requireAuth, requireRole("STAFF", "ADMIN"), async (req, res, ne
   }
 });
 
-// Any STAFF or ADMIN can set any category's rate, regardless of which
-// department they themselves belong to.
-router.patch("/:id/discount-rate", requireAuth, requireRole("STAFF", "ADMIN"), async (req, res, next) => {
-  try {
-    const existing = await prisma.category.findUnique({ where: { id: req.params.id } });
-    if (!existing) return res.status(404).json({ error: "Not found" });
-
-    const { discountRate } = req.body;
-    if (typeof discountRate !== "number" || discountRate < 0 || discountRate > 1) {
-      return res.status(400).json({ error: "discountRate must be a number between 0 and 1" });
-    }
-
-    const category = await prisma.category.update({
-      where: { id: req.params.id },
-      data: { discountRate },
-    });
-
-    await recordAudit({
-      userId: req.user.id,
-      action: "CATEGORY_DISCOUNT_RATE_UPDATED",
-      entityType: "Category",
-      entityId: category.id,
-    });
-
-    res.json(category);
-  } catch (err) {
-    next(err);
-  }
-});
-
 // ADMIN only: categories are shared across products, so re-tagging is a
 // higher-stakes edit than STAFF's day-to-day product CRUD.
 router.put("/:id", requireAuth, requireRole("ADMIN"), async (req, res, next) => {

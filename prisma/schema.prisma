@@ -39,11 +39,6 @@ model Category {
   id           String    @id @default(uuid())
   name         String
   description  String?
-  // Fraction (0-1) applied to a verified order item in this department —
-  // the default for products that don't set their own discountRate (see
-  // Product.discountRate below). Any STAFF or ADMIN can set this for any
-  // category (see PATCH /categories/:id/discount-rate).
-  discountRate Float     @default(0.15)
   createdAt    DateTime  @default(now())
   products     Product[]
 }
@@ -58,9 +53,10 @@ model Product {
   category    Category @relation(fields: [categoryId], references: [id])
   imageUrl    String?
   stock       Int      @default(0)
-  // Per-product override (0-1) — takes priority over the category's
-  // discountRate when set; null means "use the category's rate".
-  discountRate Float?
+  // Fraction (0-1) applied to a verified order item for this product's
+  // category — set by STAFF/ADMIN when the product is created or edited.
+  // No implicit default: every product must be given an explicit rate.
+  discountRate Float
   createdById String
   createdBy   User     @relation("StaffCreatesProduct", fields: [createdById], references: [id])
   createdAt   DateTime @default(now())

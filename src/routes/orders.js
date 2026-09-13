@@ -94,7 +94,7 @@ router.post("/", requireAuth, requireRole("STUDENT"), async (req, res, next) => 
     for (const item of order.items) {
       const product = productMap.get(item.productId);
       const department = product?.category?.name;
-      const discountRate = product?.discountRate ?? product?.category?.discountRate ?? 0.15;
+      const discountRate = product.discountRate;
       const lineTotal = Number(item.unitPrice) * item.quantity;
       const deptVerified = Boolean(department && departmentVerified[department]);
       if (deptVerified) anyDiscount = true;

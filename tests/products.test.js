@@ -65,6 +65,7 @@ describe("POST /products", () => {
         categoryId: "cat-1",
         stock: 10,
         description: "A cozy CS-branded hoodie.",
+        discountRate: 0.15,
       });
 
     expect(res.status).toBe(201);
@@ -82,7 +83,7 @@ describe("POST /products", () => {
     const res = await request(buildApp())
       .post("/products")
       .set("x-test-role", "ADMIN")
-      .send({ name: "CS Mug", slug: "cs-mug", price: 8, categoryId: "cat-1" });
+      .send({ name: "CS Mug", slug: "cs-mug", price: 8, categoryId: "cat-1", discountRate: 0.15 });
 
     expect(res.status).toBe(201);
     expect(mockPrismaClient.product.create).toHaveBeenCalledWith(
@@ -96,7 +97,7 @@ describe("POST /products", () => {
     const res = await request(buildApp())
       .post("/products")
       .set("x-test-role", "STAFF")
-      .send({ name: "Ghost Item", slug: "ghost", price: 10, categoryId: "bad-id" });
+      .send({ name: "Ghost Item", slug: "ghost", price: 10, categoryId: "bad-id", discountRate: 0.15 });
 
     expect(res.status).toBe(400);
     expect(mockPrismaClient.product.create).not.toHaveBeenCalled();
@@ -106,9 +107,33 @@ describe("POST /products", () => {
     const res = await request(buildApp())
       .post("/products")
       .set("x-test-role", "STUDENT")
-      .send({ name: "Nope", slug: "nope", price: 1, categoryId: "cat-1" });
+      .send({ name: "Nope", slug: "nope", price: 1, categoryId: "cat-1", discountRate: 0.15 });
 
     expect(res.status).toBe(403);
+  });
+
+  it("rejects a create with no discountRate", async () => {
+    mockPrismaClient.category.findUnique.mockResolvedValue({ id: "cat-1", name: "Computer Science" });
+
+    const res = await request(buildApp())
+      .post("/products")
+      .set("x-test-role", "STAFF")
+      .send({ name: "No Rate", slug: "no-rate", price: 10, categoryId: "cat-1" });
+
+    expect(res.status).toBe(400);
+    expect(mockPrismaClient.product.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a discountRate outside 0-1", async () => {
+    mockPrismaClient.category.findUnique.mockResolvedValue({ id: "cat-1", name: "Computer Science" });
+
+    const res = await request(buildApp())
+      .post("/products")
+      .set("x-test-role", "STAFF")
+      .send({ name: "Bad Rate", slug: "bad-rate", price: 10, categoryId: "cat-1", discountRate: 1.5 });
+
+    expect(res.status).toBe(400);
+    expect(mockPrismaClient.product.create).not.toHaveBeenCalled();
   });
 });
 

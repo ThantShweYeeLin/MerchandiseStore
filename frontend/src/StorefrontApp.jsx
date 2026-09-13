@@ -28,10 +28,10 @@ async function fetchProducts(token) {
     blurb: p.description || "No description yet.",
     images: p.images,
     imageUrl: p.imageUrl || null,
-    // Per-product override takes priority over the department's default —
-    // matches the same fallback order the backend applies when actually
-    // pricing an order (see GET /orders' discount calculation).
-    discountRate: p.discountRate ?? p.category?.discountRate ?? 0.15,
+    // Set by STAFF/ADMIN on the product itself — matches the rate the
+    // backend applies when actually pricing an order (see GET /orders'
+    // discount calculation).
+    discountRate: p.discountRate,
   }));
 }
 
@@ -148,7 +148,8 @@ function Badge({ children, tone = "navy" }) {
   );
 }
 
-function Header({ cartCount, onCartClick, onMyOrdersClick, studentDept }) {
+function Header({ cartCount, onCartClick, onMyOrdersClick, studentDept, role }) {
+  const roleLabel = role === "ADMIN" ? "admin" : role === "STAFF" ? "staff" : "student";
   return (
     <header
       style={{
@@ -185,7 +186,7 @@ function Header({ cartCount, onCartClick, onMyOrdersClick, studentDept }) {
             Merchandise Store
           </div>
           <div style={{ fontSize: 11.5, opacity: 0.65, letterSpacing: "0.01em" }}>
-            Signed in as student · {studentDept}
+            Signed in as {roleLabel}{studentDept ? ` · ${studentDept}` : ""}
           </div>
         </div>
       </div>
@@ -733,7 +734,7 @@ function Row({ label, value }) {
 /* Root app                                                             */
 /* ------------------------------------------------------------------ */
 
-export default function StorefrontApp({ token, department, resetKey }) {
+export default function StorefrontApp({ token, department, role, resetKey }) {
   const [allProducts, setAllProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -797,6 +798,7 @@ export default function StorefrontApp({ token, department, resetKey }) {
         onCartClick={() => setCartOpen(true)}
         onMyOrdersClick={() => setView("myorders")}
         studentDept={department}
+        role={role}
       />
 
       {view === "catalog" && (
@@ -813,7 +815,7 @@ export default function StorefrontApp({ token, department, resetKey }) {
           {loading && <div style={{ padding: 40, textAlign: "center", color: "#8A8371" }}>Loading products…</div>}
           {loadError && (
             <div style={{ background: "#FBEAEC", color: COLORS.maroon, padding: "12px 14px", borderRadius: 5, marginBottom: 20, fontSize: 13.5 }}>
-              {loadError} — is the backend running on {`localhost:3000`}?
+              {loadError} — is the backend running at {API_BASE_URL}?
             </div>
           )}
           {!loading && !loadError && allProducts.length === 0 && (

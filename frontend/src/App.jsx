@@ -128,7 +128,7 @@ export default function App() {
                 rememberPage("admin");
               }}
             >
-              <Briefcase size={13} /> Admin
+              <Briefcase size={13} /> {user.role === "ADMIN" ? "Admin" : "Staff"}
             </TabButton>
           )}
         </div>
@@ -142,7 +142,7 @@ export default function App() {
 
       <div style={{ flexGrow: 1 }}>
         {page === "storefront" && (
-          <StorefrontApp token={user.token} department={user.department} resetKey={storefrontResetKey} />
+          <StorefrontApp token={user.token} department={user.department} role={user.role} resetKey={storefrontResetKey} />
         )}
         {page === "admin" && <AdminCatalog token={user.token} role={user.role} department={user.department} />}
       </div>

@@ -7,16 +7,15 @@ const { recordAudit } = require("../utils/auditLog");
 const router = express.Router();
 const prisma = new PrismaClient();
 
-// Returns { ok: true, value } or { ok: false, error }. `undefined`/""/null all
-// mean "no override, use the category's rate"; anything else must be a
-// number between 0 and 1.
+// Returns { ok: true, value } or { ok: false, error }. discountRate is
+// required — every product must be given an explicit rate by STAFF/ADMIN.
 function parseDiscountRate(discountRate) {
   if (discountRate === undefined || discountRate === null || discountRate === "") {
-    return { ok: true, value: null };
+    return { ok: false, error: "discountRate is required and must be a number between 0 and 1" };
   }
   const num = Number(discountRate);
   if (Number.isNaN(num) || num < 0 || num > 1) {
-    return { ok: false, error: "discountRate must be a number between 0 and 1, or blank" };
+    return { ok: false, error: "discountRate must be a number between 0 and 1" };
   }
   return { ok: true, value: num };
 }

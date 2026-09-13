@@ -28,7 +28,7 @@ export default function ProductDetail({ product, viewerDepartment, onBack, onAdd
   const [added, setAdded] = useState(false);
 
   const isViewerDepartment = product.department && product.department === viewerDepartment;
-  const discountRate = product.discountRate ?? 0.15;
+  const discountRate = product.discountRate;
   const discountedPrice = product.price * (1 - discountRate);
 
   // ProductImage rows from the ERD, one row per photo + sortOrder.

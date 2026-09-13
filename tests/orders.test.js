@@ -39,7 +39,7 @@ function buildApp() {
   return app;
 }
 
-const product = { id: "p1", price: 100, category: { name: "Computer Science" } };
+const product = { id: "p1", price: 100, discountRate: 0.15, category: { name: "Computer Science" } };
 
 function mockOrderPersistence(orderId) {
   mockPrismaClient.order.create.mockResolvedValue({
@@ -120,8 +120,8 @@ describe("POST /orders", () => {
   });
 
   it("discounts only the items from a verified department, not the whole order", async () => {
-    const csProduct = { id: "p1", price: 100, category: { name: "Computer Science" } };
-    const engProduct = { id: "p2", price: 100, category: { name: "Engineering" } };
+    const csProduct = { id: "p1", price: 100, discountRate: 0.15, category: { name: "Computer Science" } };
+    const engProduct = { id: "p2", price: 100, discountRate: 0.15, category: { name: "Engineering" } };
     mockPrismaClient.product.findMany.mockResolvedValue([csProduct, engProduct]);
 
     mockPrismaClient.order.create.mockResolvedValue({

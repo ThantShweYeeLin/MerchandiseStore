@@ -45,8 +45,7 @@ async function saveProduct(product, token) {
     stock: Number(product.stock) || 0,
     description: product.description || "",
     imageUrl: product.imageUrl || "",
-    // Blank means "use the department's default rate" — the backend treats
-    // an empty/omitted value as null (no override).
+    // Required — the backend rejects a create/edit with no discountRate.
     discountRate: product.discountRate === "" || product.discountRate == null ? "" : Number(product.discountRate) / 100,
   });
   const res = await fetch(
@@ -434,14 +433,14 @@ function ProductFormModal({ open, form, setForm, categories, onAddCategory, onCl
           </div>
         )}
 
-        <Field label="Discount override % (optional)">
+        <Field label="Discount % for verified same-department students">
           <input
             type="number"
             min="0"
             max="100"
             value={form.discountRate}
             onChange={update("discountRate")}
-            placeholder="Leave blank to use the department's default rate"
+            placeholder="e.g. 15"
             style={inputStyle}
           />
         </Field>
@@ -504,7 +503,7 @@ function ProductFormModal({ open, form, setForm, categories, onAddCategory, onCl
 
         <button
           onClick={onSave}
-          disabled={!form.name || !form.price || !form.categoryId || saving}
+          disabled={!form.name || !form.price || !form.categoryId || form.discountRate === "" || saving}
           style={{
             width: "100%",
             background: COLORS.red,
@@ -514,8 +513,8 @@ function ProductFormModal({ open, form, setForm, categories, onAddCategory, onCl
             borderRadius: 5,
             fontSize: 14.5,
             fontWeight: 700,
-            cursor: !form.name || !form.price || !form.categoryId || saving ? "default" : "pointer",
-            opacity: !form.name || !form.price || !form.categoryId ? 0.5 : 1,
+            cursor: !form.name || !form.price || !form.categoryId || form.discountRate === "" || saving ? "default" : "pointer",
+            opacity: !form.name || !form.price || !form.categoryId || form.discountRate === "" ? 0.5 : 1,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -624,9 +623,9 @@ function UsersPanel({ token, categories }) {
       <div style={{ marginBottom: 20 }}>
         <div style={{ ...styles.display, fontSize: 24, fontWeight: 700 }}>Users</div>
         <div style={{ fontSize: 13, color: COLORS.muted, marginTop: 2 }}>
-          Assign roles and departments. Department only matters for STAFF (it scopes which
-          orders they see) — student discounts are verified independently against EduCore,
-          not from this field.
+          Assign roles and departments. For a STUDENT, setting this field here is trusted
+          directly as a verified department and skips the EduCore check at checkout for it —
+          any other department they order from still goes through EduCore as normal.
         </div>
       </div>
 
@@ -1034,7 +1033,7 @@ export default function AdminCatalog({ token, role }) {
 
             {loadError && (
               <div style={{ background: "#FBEAEC", color: COLORS.redDeep, padding: "12px 14px", borderRadius: 5, marginBottom: 18, fontSize: 13.5 }}>
-                {loadError} — is the backend running on {`localhost:3000`}?
+                {loadError} — is the backend running at {API_BASE_URL}?
               </div>
             )}
 
