@@ -567,6 +567,7 @@ function UsersPanel({ token, categories }) {
   const [loadError, setLoadError] = useState(null);
   const [savingId, setSavingId] = useState(null);
   const [rowError, setRowError] = useState({});
+  const [search, setSearch] = useState("");
 
   const load = async () => {
     setLoading(true);
@@ -612,6 +613,12 @@ function UsersPanel({ token, categories }) {
     }
   };
 
+  const filteredUsers = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return users;
+    return users.filter((u) => u.displayName.toLowerCase().includes(query));
+  }, [users, search]);
+
   return (
     <>
       <div style={{ marginBottom: 20 }}>
@@ -629,11 +636,27 @@ function UsersPanel({ token, categories }) {
         </div>
       )}
 
+      <div style={{ position: "relative", maxWidth: 320, marginBottom: 16 }}>
+        <Search size={15} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: COLORS.muted }} />
+        <input
+          id="users-search"
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by name…"
+          style={{ ...inputStyle, paddingLeft: 32 }}
+        />
+      </div>
+
       <div style={{ background: COLORS.white, border: `1px solid ${COLORS.line}`, borderRadius: 8, overflow: "hidden" }}>
         {loading ? (
           <div style={{ padding: 40, textAlign: "center", color: COLORS.muted, fontSize: 14 }}>Loading…</div>
         ) : users.length === 0 ? (
           <div style={{ padding: 40, textAlign: "center", color: COLORS.muted, fontSize: 14 }}>No users yet.</div>
+        ) : filteredUsers.length === 0 ? (
+          <div style={{ padding: 40, textAlign: "center", color: COLORS.muted, fontSize: 14 }}>
+            No users match your search.
+          </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 560 }}>
@@ -645,7 +668,7 @@ function UsersPanel({ token, categories }) {
                 </tr>
               </thead>
               <tbody>
-                {users.map((u) => (
+                {filteredUsers.map((u) => (
                   <tr key={u.id} style={{ borderBottom: `1px solid ${COLORS.line}` }}>
                     <td style={{ padding: "12px 14px" }}>
                       <div style={{ fontWeight: 600, fontSize: 14 }}>{u.displayName}</div>
