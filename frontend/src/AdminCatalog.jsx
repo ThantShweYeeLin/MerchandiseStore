@@ -14,7 +14,10 @@ function authHeaders(token) {
 
 async function fetchCategories(token) {
   const res = await fetch(`${API_BASE_URL}/categories`, { headers: authHeaders(token) });
-  if (!res.ok) throw new Error(`Failed to load categories (${res.status})`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Failed to load categories (${res.status})`);
+  }
   return res.json();
 }
 
@@ -24,13 +27,19 @@ async function createCategory(name, token) {
     headers: authHeaders(token),
     body: JSON.stringify({ name }),
   });
-  if (!res.ok) throw new Error(`Failed to create category (${res.status})`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Failed to create category (${res.status})`);
+  }
   return res.json();
 }
 
 async function fetchProducts(token) {
   const res = await fetch(`${API_BASE_URL}/products`, { headers: authHeaders(token) });
-  if (!res.ok) throw new Error(`Failed to load products (${res.status})`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Failed to load products (${res.status})`);
+  }
   return res.json();
 }
 
@@ -93,7 +102,10 @@ const ROLES = ["STUDENT", "STAFF", "ADMIN"];
 
 async function fetchUsers(token) {
   const res = await fetch(`${API_BASE_URL}/admin/users`, { headers: authHeaders(token) });
-  if (!res.ok) throw new Error(`Failed to load users (${res.status})`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Failed to load users (${res.status})`);
+  }
   return res.json();
 }
 
@@ -127,7 +139,10 @@ async function updateUserDepartment(id, department, token) {
 // ADMIN sees every order (see GET /orders on the backend for the scoping).
 async function fetchOrders(token) {
   const res = await fetch(`${API_BASE_URL}/orders`, { headers: authHeaders(token) });
-  if (!res.ok) throw new Error(`Failed to load orders (${res.status})`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Failed to load orders (${res.status})`);
+  }
   return res.json();
 }
 
@@ -149,7 +164,10 @@ async function updateOrderStatus(orderId, status, token) {
 // ADMIN only: the audit trail — who did what, and when.
 async function fetchAuditLog(token) {
   const res = await fetch(`${API_BASE_URL}/admin/audit-log`, { headers: authHeaders(token) });
-  if (!res.ok) throw new Error(`Failed to load audit log (${res.status})`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Failed to load audit log (${res.status})`);
+  }
   return res.json();
 }
 
