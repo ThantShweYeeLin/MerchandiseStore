@@ -1,15 +1,18 @@
 import React, { useEffect, useState } from "react";
-import AuthGate, { refreshToken } from "./AuthGate";
+import AuthGate, { refreshToken, signOut } from "./AuthGate";
 import StorefrontApp from "./StorefrontApp";
 import AdminCatalog from "./AdminCatalog";
-import { UserCircle, ShoppingBag, Briefcase } from "lucide-react";
+import { UserCircle, ShoppingBag, Briefcase, LogOut, X } from "lucide-react";
 
 const COLORS = {
   red: "#A61C2E",
   redDeep: "#7A1220",
+  redSoft: "#F3D6D9",
   white: "#FFFFFF",
   ink: "#20262F",
+  muted: "#8A8371",
   line: "#E3D9DA",
+  bg: "#FAF7F7",
 };
 
 // Remembers which page you were on (storefront/admin) across a refresh —
@@ -49,6 +52,8 @@ export default function App() {
   // "My orders") that this button should always back out of, back to the
   // actual catalog, not just "already on this page, do nothing."
   const [storefrontResetKey, setStorefrontResetKey] = useState(0);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -77,13 +82,19 @@ export default function App() {
     rememberPage("admin");
   };
 
-  // Doesn't actually sign out of Microsoft — just drops back to AuthGate's
-  // profile card, which silently re-acquires the still-active MSAL session.
-  // Real sign-out lives on that card's own button (msalInstance.logoutRedirect).
-  const handleViewProfile = () => {
-    setUser(null);
-    setPage("login");
-    rememberPage("login");
+  // Just opens a card with the account info already in hand — deliberately
+  // doesn't touch MSAL or navigate back through AuthGate, so it can never
+  // trigger a real (re-)login. Actual sign-out is the separate button
+  // inside the card.
+  const handleViewProfile = () => setProfileOpen(true);
+
+  const handleSignOut = async () => {
+    setSigningOut(true);
+    try {
+      await signOut(user.account);
+    } finally {
+      setSigningOut(false);
+    }
   };
 
   if (page === "login") {
@@ -148,6 +159,92 @@ export default function App() {
           <StorefrontApp token={user.token} department={user.department} role={user.role} resetKey={storefrontResetKey} />
         )}
         {page === "admin" && <AdminCatalog token={user.token} role={user.role} department={user.department} />}
+      </div>
+
+      {profileOpen && (
+        <ProfileModal
+          user={user}
+          onClose={() => setProfileOpen(false)}
+          onSignOut={handleSignOut}
+          signingOut={signingOut}
+        />
+      )}
+    </div>
+  );
+}
+
+function ProfileModal({ user, onClose, onSignOut, signingOut }) {
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, background: "rgba(32,38,47,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 40 }}
+      onClick={onClose}
+    >
+      <div
+        style={{ background: COLORS.white, borderRadius: 10, width: 360, maxWidth: "92vw", padding: 26, fontFamily: "'IBM Plex Sans', -apple-system, sans-serif" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.muted }}>
+            <X size={18} />
+          </button>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+          <div
+            style={{
+              width: 46,
+              height: 46,
+              borderRadius: "50%",
+              background: COLORS.redSoft,
+              color: COLORS.redDeep,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontWeight: 700,
+              fontSize: 17,
+            }}
+          >
+            {user.displayName.split(" ").map((n) => n[0]).slice(0, 2).join("")}
+          </div>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>{user.displayName}</div>
+            <div style={{ fontSize: 12.5, color: COLORS.muted }}>{user.email}</div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, marginBottom: 22 }}>
+          <span style={{ background: COLORS.redSoft, color: COLORS.redDeep, fontSize: 11.5, padding: "4px 10px", borderRadius: 20, fontWeight: 600 }}>
+            {user.role}
+          </span>
+          {user.department && (
+            <span style={{ background: COLORS.bg, color: COLORS.ink, fontSize: 11.5, padding: "4px 10px", borderRadius: 20, border: `1px solid ${COLORS.line}` }}>
+              {user.department}
+            </span>
+          )}
+        </div>
+
+        <button
+          onClick={onSignOut}
+          disabled={signingOut}
+          style={{
+            width: "100%",
+            background: "none",
+            border: `1px solid ${COLORS.line}`,
+            borderRadius: 6,
+            padding: "10px 14px",
+            color: COLORS.redDeep,
+            fontSize: 13.5,
+            fontWeight: 600,
+            cursor: signingOut ? "default" : "pointer",
+            opacity: signingOut ? 0.6 : 1,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 7,
+          }}
+        >
+          <LogOut size={14} /> {signingOut ? "Signing out…" : "Sign out"}
+        </button>
       </div>
     </div>
   );

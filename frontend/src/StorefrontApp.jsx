@@ -2,6 +2,7 @@ import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { ShoppingBag, X, Check, ChevronRight, Loader2, ShieldCheck, ShieldAlert, Minus, Plus, Package, Clock } from "lucide-react";
 import ProductDetail from "./ProductDetail";
 import { API_BASE_URL } from "./config";
+import { fetchWithRetry } from "./apiFetch";
 
 /* ------------------------------------------------------------------ */
 /* API layer — real calls against the Express backend.                 */
@@ -13,7 +14,7 @@ import { API_BASE_URL } from "./config";
 // department are both set to the same name here so the rest of this file
 // (written against the old two-field shape) needs no further changes.
 async function fetchProducts(token) {
-  const res = await fetch(`${API_BASE_URL}/products`, {
+  const res = await fetchWithRetry(`${API_BASE_URL}/products`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error(`Failed to load products (${res.status})`);
@@ -68,7 +69,7 @@ async function placeOrder({ items, token }) {
 // "Orders" tab in the admin panel): PENDING, READY_FOR_PICKUP, PAID, or
 // CANCELLED.
 async function fetchMyOrders(token) {
-  const res = await fetch(`${API_BASE_URL}/orders/mine`, {
+  const res = await fetchWithRetry(`${API_BASE_URL}/orders/mine`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error(`Failed to load your orders (${res.status})`);

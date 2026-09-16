@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { Plus, Pencil, Trash2, X, Loader2, LayoutGrid, Tag, Sparkles, Search, ClipboardList } from "lucide-react";
 import { API_BASE_URL } from "./config";
+import { fetchWithRetry } from "./apiFetch";
 
 /* ------------------------------------------------------------------ */
 /* API layer — real calls against the Express backend. The backend has  */
@@ -13,7 +14,7 @@ function authHeaders(token) {
 }
 
 async function fetchCategories(token) {
-  const res = await fetch(`${API_BASE_URL}/categories`, { headers: authHeaders(token) });
+  const res = await fetchWithRetry(`${API_BASE_URL}/categories`, { headers: authHeaders(token) });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || `Failed to load categories (${res.status})`);
@@ -35,7 +36,7 @@ async function createCategory(name, token) {
 }
 
 async function fetchProducts(token) {
-  const res = await fetch(`${API_BASE_URL}/products`, { headers: authHeaders(token) });
+  const res = await fetchWithRetry(`${API_BASE_URL}/products`, { headers: authHeaders(token) });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || `Failed to load products (${res.status})`);
@@ -101,7 +102,7 @@ async function deleteProductApi(id, token) {
 const ROLES = ["STUDENT", "STAFF", "ADMIN"];
 
 async function fetchUsers(token) {
-  const res = await fetch(`${API_BASE_URL}/admin/users`, { headers: authHeaders(token) });
+  const res = await fetchWithRetry(`${API_BASE_URL}/admin/users`, { headers: authHeaders(token) });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || `Failed to load users (${res.status})`);
@@ -138,7 +139,7 @@ async function updateUserDepartment(id, department, token) {
 // STAFF sees orders containing at least one item from their own department;
 // ADMIN sees every order (see GET /orders on the backend for the scoping).
 async function fetchOrders(token) {
-  const res = await fetch(`${API_BASE_URL}/orders`, { headers: authHeaders(token) });
+  const res = await fetchWithRetry(`${API_BASE_URL}/orders`, { headers: authHeaders(token) });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || `Failed to load orders (${res.status})`);
@@ -163,7 +164,7 @@ async function updateOrderStatus(orderId, status, token) {
 
 // ADMIN only: the audit trail — who did what, and when.
 async function fetchAuditLog(token) {
-  const res = await fetch(`${API_BASE_URL}/admin/audit-log`, { headers: authHeaders(token) });
+  const res = await fetchWithRetry(`${API_BASE_URL}/admin/audit-log`, { headers: authHeaders(token) });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || `Failed to load audit log (${res.status})`);

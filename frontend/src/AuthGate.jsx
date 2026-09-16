@@ -8,6 +8,7 @@ import {
   Briefcase,
 } from "lucide-react";
 import { API_BASE_URL, ENTRA_AUTHORITY, ENTRA_CLIENT_ID } from "./config";
+import { fetchWithRetry } from "./apiFetch";
 
 const msalInstance = new PublicClientApplication({
   auth: {
@@ -62,6 +63,14 @@ export async function refreshToken() {
   } catch {
     return null;
   }
+}
+
+// Real, explicit sign-out — ends the Microsoft session via a redirect.
+// Exported so callers outside AuthGate (the "Profile" card in App.jsx) can
+// offer it too, without duplicating the msalInstance/msalReady plumbing.
+export async function signOut(account) {
+  await msalReady;
+  await msalInstance.logoutRedirect({ account });
 }
 
 async function signInWithEntra() {
@@ -122,7 +131,7 @@ function userFromAuthResponse(response) {
 // department manually (see PATCH /admin/users/:id/department) — so the real
 // values always come from here, overriding the guess once available.
 async function fetchMe(token) {
-  const response = await fetch(`${API_BASE_URL}/me`, {
+  const response = await fetchWithRetry(`${API_BASE_URL}/me`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!response.ok) throw new Error(`Could not load account details (${response.status})`);
@@ -524,10 +533,7 @@ export default function AuthGate({ onEnterStorefront, onEnterAdmin, autoEnter })
   return (
     <SignedInScreen
       user={user}
-      onSignOut={async () => {
-        await msalReady;
-        await msalInstance.logoutRedirect({ account: user.account });
-      }}
+      onSignOut={() => signOut(user.account)}
       onEnterStorefront={() => onEnterStorefront?.(user)}
       onEnterAdmin={() => onEnterAdmin?.(user)}
     />
