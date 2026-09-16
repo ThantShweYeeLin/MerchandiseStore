@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import AuthGate, { refreshToken } from "./AuthGate";
 import StorefrontApp from "./StorefrontApp";
 import AdminCatalog from "./AdminCatalog";
-import { LogOut, ShoppingBag, Briefcase } from "lucide-react";
+import { UserCircle, ShoppingBag, Briefcase } from "lucide-react";
 
 const COLORS = {
   red: "#A61C2E",
@@ -77,7 +77,10 @@ export default function App() {
     rememberPage("admin");
   };
 
-  const handleSignOut = () => {
+  // Doesn't actually sign out of Microsoft — just drops back to AuthGate's
+  // profile card, which silently re-acquires the still-active MSAL session.
+  // Real sign-out lives on that card's own button (msalInstance.logoutRedirect).
+  const handleViewProfile = () => {
     setUser(null);
     setPage("login");
     rememberPage("login");
@@ -133,10 +136,10 @@ export default function App() {
           )}
         </div>
         <button
-          onClick={handleSignOut}
+          onClick={handleViewProfile}
           style={{ background: "none", border: "none", color: "rgba(255,255,255,0.7)", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, fontSize: 12.5 }}
         >
-          <LogOut size={12} /> Sign out
+          <UserCircle size={13} /> Profile
         </button>
       </div>
 
