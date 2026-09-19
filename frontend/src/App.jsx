@@ -30,6 +30,30 @@ function rememberPage(page) {
   }
 }
 
+// Real URL paths for each page, so a link like /admin is a deep link. The
+// path alone never grants anything: AuthGate still shows the sign-in screen
+// until a valid Entra session exists in *this* browser (MSAL's cache lives
+// in sessionStorage, which isn't shared across browsers or tabs), and the
+// backend independently rejects every API call that lacks a valid token.
+const PAGE_PATHS = { storefront: "/store", admin: "/admin" };
+
+function pageFromPath(pathname) {
+  const clean = pathname.replace(/\/+$/, "") || "/";
+  return Object.keys(PAGE_PATHS).find((page) => PAGE_PATHS[page] === clean) || null;
+}
+
+function syncUrl(page, { replace = false } = {}) {
+  const path = PAGE_PATHS[page] || "/";
+  if (window.location.pathname === path) return;
+  window.history[replace ? "replaceState" : "pushState"]({}, "", path);
+}
+
+// A deep link opened while signed out has to survive the round trip to
+// Microsoft (which returns to the origin root), so stash the requested page
+// in sessionStorage before AuthGate starts any redirect.
+const deepLinkedPage = pageFromPath(window.location.pathname);
+if (deepLinkedPage) rememberPage(deepLinkedPage);
+
 function getRememberedPage() {
   try {
     return sessionStorage.getItem(REMEMBERED_PAGE_KEY);
@@ -69,10 +93,30 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.adObjectId]);
 
+  // Browser back/forward: follow the URL, but never into a page the role
+  // doesn't allow, and never without a user.
+  useEffect(() => {
+    if (!user) return;
+    const onPopState = () => {
+      const target = pageFromPath(window.location.pathname) || "storefront";
+      const allowed = target !== "admin" || user.role === "STAFF" || user.role === "ADMIN";
+      if (!allowed) {
+        setPage("storefront");
+        syncUrl("storefront", { replace: true });
+        return;
+      }
+      setPage(target);
+      rememberPage(target);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [user]);
+
   const handleEnterStorefront = (signedInUser) => {
     setUser(signedInUser);
     setPage("storefront");
     rememberPage("storefront");
+    syncUrl("storefront");
     setStorefrontResetKey((n) => n + 1);
   };
 
@@ -80,6 +124,7 @@ export default function App() {
     setUser(signedInUser);
     setPage("admin");
     rememberPage("admin");
+    syncUrl("admin");
   };
 
   // Just opens a card with the account info already in hand — deliberately
@@ -90,6 +135,7 @@ export default function App() {
 
   const handleSignOut = async () => {
     setSigningOut(true);
+    rememberPage("login");
     try {
       await signOut(user.account);
     } finally {
@@ -129,6 +175,7 @@ export default function App() {
             onClick={() => {
               setPage("storefront");
               rememberPage("storefront");
+              syncUrl("storefront");
               setStorefrontResetKey((n) => n + 1);
             }}
           >
@@ -140,6 +187,7 @@ export default function App() {
               onClick={() => {
                 setPage("admin");
                 rememberPage("admin");
+                syncUrl("admin");
               }}
             >
               <Briefcase size={13} /> {user.role === "ADMIN" ? "Admin" : "Staff"}
