@@ -16,8 +16,14 @@ const msalInstance = new PublicClientApplication({
     authority: ENTRA_AUTHORITY,
     redirectUri: window.location.origin,
   },
+  // localStorage (not sessionStorage): sessionStorage is scoped to a single
+  // tab, so a deep link (e.g. /store) revisited in a *new* tab of the same,
+  // already-signed-in browser would find no cached account and fall back to
+  // the sign-in screen. localStorage is shared across tabs and survives
+  // closing the browser, while still being separate per browser/profile —
+  // a different browser (or an incognito window) still has to sign in.
   cache: {
-    cacheLocation: "sessionStorage",
+    cacheLocation: "localStorage",
   },
 });
 
